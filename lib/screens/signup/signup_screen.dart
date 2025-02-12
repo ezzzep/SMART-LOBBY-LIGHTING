@@ -4,6 +4,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+
 class Signup extends StatefulWidget {
   const Signup({super.key});
 
@@ -15,6 +16,8 @@ class _SignupState extends State<Signup> {
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   bool _isLoading = false;
+  String? _emailError;
+  String? _passwordError;
 
   @override
   void dispose() {
@@ -23,7 +26,45 @@ class _SignupState extends State<Signup> {
     super.dispose();
   }
 
+    void _validateEmail(String value) {
+    final emailRegex =
+        RegExp(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$');
+    setState(() {
+      _emailError = value.isEmpty
+          ? "Email is required"
+          : (!emailRegex.hasMatch(value) ? "Enter a valid email" : null);
+    });
+  }
+
+ void _validatePassword(String value) {
+    final hasUppercase = RegExp(r'[A-Z]');
+    final hasLowercase = RegExp(r'[a-z]');
+    final hasNumber = RegExp(r'\d');
+    final hasSpecialChar = RegExp(r'[!@#\$%^&*(),.?":{}|<>_]');
+
+   
+    setState(() {
+      if (value.isEmpty) {
+        _passwordError = "Password is required";
+      } else if (value.length < 8 || value.length > 15) {
+        _passwordError = "Password must be 8-15 characters";
+      } else if (!hasUppercase.hasMatch(value)) {
+        _passwordError = "Include at least one uppercase letter";
+      } else if (!hasLowercase.hasMatch(value)) {
+        _passwordError = "Include at least one uppercase letter";
+      } else if (!hasNumber.hasMatch(value)) {
+        _passwordError = "Include at least one number";
+      } else if (!hasSpecialChar.hasMatch(value)) {
+        _passwordError = "Include at least one special character";
+      } else {
+        _passwordError = null;
+      }
+    });
+  }
+
   Future<void> _handleSignup() async {
+    if (_emailError != null || _passwordError != null) return;
+
     setState(() => _isLoading = true);
 
     try {
@@ -34,7 +75,7 @@ class _SignupState extends State<Signup> {
       );
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Signup failed: $e")),
+        SnackBar(content: Text("Signup failed: \$e")),
       );
     }
 
@@ -98,14 +139,21 @@ class _SignupState extends State<Signup> {
         const SizedBox(height: 16),
         TextField(
           controller: _emailController,
+          onChanged: _validateEmail,
           decoration: InputDecoration(
             filled: true,
             hintText: 'yourname@example.com',
             hintStyle: const TextStyle(color: Color(0xff6A6A6A), fontSize: 14),
             fillColor: const Color(0xffF7F7F9),
+            errorText: _emailError,
             border: OutlineInputBorder(
-              borderSide: BorderSide.none,
               borderRadius: BorderRadius.circular(14),
+              borderSide: BorderSide(
+                color: _emailError == null && _emailController.text.isNotEmpty
+                    ? Colors.green
+                    : (_emailError != null ? Colors.red : Colors.grey),
+                width: 2,
+              ),
             ),
           ),
         ),
@@ -129,13 +177,23 @@ class _SignupState extends State<Signup> {
         const SizedBox(height: 16),
         TextField(
           controller: _passwordController,
+          onChanged: _validatePassword,
           obscureText: true,
           decoration: InputDecoration(
             filled: true,
+            hintText: '••••••••',
+            hintStyle: const TextStyle(color: Color(0xff6A6A6A), fontSize: 14),
             fillColor: const Color(0xffF7F7F9),
+            errorText: _passwordError,
             border: OutlineInputBorder(
-              borderSide: BorderSide.none,
               borderRadius: BorderRadius.circular(14),
+              borderSide: BorderSide(
+                color: _passwordError == null &&
+                        _passwordController.text.isNotEmpty
+                    ? Colors.green
+                    : (_passwordError != null ? Colors.red : Colors.grey),
+                width: 2,
+              ),
             ),
           ),
         ),
