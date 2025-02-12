@@ -154,7 +154,7 @@ class _SignupState extends State<Signup> {
       onPressed: _isLoading ? null : _handleSignup,
       child: _isLoading
           ? const CircularProgressIndicator(color: Colors.white)
-          : const Text("Sign Up"),
+          : const Text("Sign Up", style: TextStyle(color: Color(0xffF7F7F9))),
     );
   }
 
@@ -171,10 +171,13 @@ class _SignupState extends State<Signup> {
             ),
             TextSpan(
               text: "Log In",
-              style: const TextStyle(color: Color(0xff1A1D1E), fontSize: 16),
+              style: const TextStyle(
+                  color: Color(0xff1A1D1E),
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold),
               recognizer: TapGestureRecognizer()
                 ..onTap = () {
-                  Navigator.push(
+                  Navigator.pushReplacement(
                     context,
                     MaterialPageRoute(builder: (context) => Login()),
                   );

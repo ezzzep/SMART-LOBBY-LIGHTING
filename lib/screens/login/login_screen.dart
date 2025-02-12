@@ -54,6 +54,7 @@ class _LoginState extends State<Login> {
       backgroundColor: Colors.transparent,
       elevation: 0,
       toolbarHeight: 100,
+      automaticallyImplyLeading: false, // Hides the back arrow
     );
   }
 
@@ -154,7 +155,10 @@ class _LoginState extends State<Login> {
           context: context,
         );
       },
-      child: const Text("Sign In"),
+      child: const Text(
+        "Sign In",
+        style: TextStyle(color: Color(0xffF7F7F9)),
+      ),
     );
   }
 
@@ -177,7 +181,7 @@ class _LoginState extends State<Login> {
               text: "Create Account",
               style: const TextStyle(
                 color: Color(0xff1A1D1E),
-                fontWeight: FontWeight.normal,
+                fontWeight: FontWeight.bold,
                 fontSize: 16,
               ),
               recognizer: TapGestureRecognizer()
