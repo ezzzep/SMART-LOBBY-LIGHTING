@@ -59,7 +59,7 @@ class Home extends StatelessWidget {
       onPressed: () async {
         await AuthService().signout(context: context);
       },
-      child: const Text("Sign Out BRUH"),
+      child: const Text("Sign Out "),
     );
   }
 }
