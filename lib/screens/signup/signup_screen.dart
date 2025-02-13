@@ -4,7 +4,6 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-
 class Signup extends StatefulWidget {
   const Signup({super.key});
 
@@ -26,7 +25,7 @@ class _SignupState extends State<Signup> {
     super.dispose();
   }
 
-    void _validateEmail(String value) {
+  void _validateEmail(String value) {
     final emailRegex =
         RegExp(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$');
     setState(() {
@@ -36,13 +35,12 @@ class _SignupState extends State<Signup> {
     });
   }
 
- void _validatePassword(String value) {
+  void _validatePassword(String value) {
     final hasUppercase = RegExp(r'[A-Z]');
     final hasLowercase = RegExp(r'[a-z]');
     final hasNumber = RegExp(r'\d');
     final hasSpecialChar = RegExp(r'[!@#\$%^&*(),.?":{}|<>_]');
 
-   
     setState(() {
       if (value.isEmpty) {
         _passwordError = "Password is required";
@@ -181,7 +179,7 @@ class _SignupState extends State<Signup> {
           obscureText: true,
           decoration: InputDecoration(
             filled: true,
-            hintText: '••••••••',
+            hintText: '@Test1234',
             hintStyle: const TextStyle(color: Color(0xff6A6A6A), fontSize: 14),
             fillColor: const Color(0xffF7F7F9),
             errorText: _passwordError,
