@@ -27,34 +27,32 @@ class _LoginState extends State<Login> {
     return Scaffold(
       backgroundColor: Colors.white,
       resizeToAvoidBottomInset: true,
-      bottomNavigationBar: _signup(context),
-      appBar: _buildAppBar(context),
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.start,
-            children: [
-              _buildHeader(),
-              const SizedBox(height: 80),
-              _emailAddress(),
-              const SizedBox(height: 20),
-              _password(),
-              const SizedBox(height: 50),
-              _signin(context),
-            ],
-          ),
+        child: Column(
+          children: [
+            Expanded(
+              child: SingleChildScrollView(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const SizedBox(height: 50), // Extra spacing for balance
+                    _buildHeader(),
+                    const SizedBox(height: 80),
+                    _emailAddress(),
+                    const SizedBox(height: 20),
+                    _password(),
+                    const SizedBox(height: 50),
+                    _signin(context),
+                  ],
+                ),
+              ),
+            ),
+            _signup(context), // "New User?" text at the bottom
+          ],
         ),
       ),
-    );
-  }
-
-  AppBar _buildAppBar(BuildContext context) {
-    return AppBar(
-      backgroundColor: Colors.transparent,
-      elevation: 0,
-      toolbarHeight: 100,
-      automaticallyImplyLeading: false, // Hides the back arrow
     );
   }
 
@@ -91,6 +89,7 @@ class _LoginState extends State<Login> {
         TextField(
           controller: _emailController,
           keyboardType: TextInputType.emailAddress,
+          autofillHints: [AutofillHints.email], // Enable email suggestions
           decoration: _inputDecoration('Enter your email'),
         ),
       ],
