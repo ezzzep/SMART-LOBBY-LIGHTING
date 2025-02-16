@@ -1,5 +1,5 @@
 import 'package:smart_lighting/screens/login/login_screen.dart';
-import 'package:smart_lighting/screens/verification/verify_email_screen.dart'; // Add this import
+
 import 'package:smart_lighting/services/service.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';

@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:smart_lighting/firebase_options.dart';
 import 'package:smart_lighting/screens/login/login_screen.dart';
 import 'package:smart_lighting/screens/dashboard/dashboard_screen.dart';
-import 'package:smart_lighting/screens/verification/verify_email_screen.dart'; // Add this import
+
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
