@@ -1,4 +1,5 @@
 import 'package:smart_lighting/screens/login/login_screen.dart';
+import 'package:smart_lighting/screens/verification/verify_email_screen.dart'; // Add this import
 import 'package:smart_lighting/services/service.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -60,6 +61,7 @@ class _SignupState extends State<Signup> {
     });
   }
 
+  // Handle signup and navigate to verification screen
   Future<void> _handleSignup() async {
     if (_emailError != null || _passwordError != null) return;
 
@@ -73,12 +75,13 @@ class _SignupState extends State<Signup> {
       );
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Signup failed: \$e")),
+        SnackBar(content: Text("Signup failed: $e")),
       );
     }
 
     setState(() => _isLoading = false);
   }
+
 
   @override
   Widget build(BuildContext context) {
