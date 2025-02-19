@@ -1,8 +1,10 @@
 import 'package:smart_lighting/screens/signup/signup_screen.dart';
+import 'package:smart_lighting/screens/dashboard/dashboard_screen.dart'; // Import home screen
 import 'package:smart_lighting/services/service.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:fluttertoast/fluttertoast.dart';
 
 class Login extends StatefulWidget {
   const Login({super.key});
@@ -148,11 +150,29 @@ class _LoginState extends State<Login> {
         elevation: 0,
       ),
       onPressed: () async {
-        await AuthService().signin(
-          email: _emailController.text,
-          password: _passwordController.text,
+        bool loginSuccess = await AuthService().signin(
+          email: _emailController.text.trim(),
+          password: _passwordController.text.trim(),
           context: context,
         );
+
+         if (!mounted) return; // ✅ Prevents async issues with context
+
+        if (loginSuccess) {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => const Home()),
+          );
+        } else {
+          Fluttertoast.showToast(
+            msg: "Login failed. Please check your credentials.",
+            toastLength: Toast.LENGTH_LONG,
+            gravity: ToastGravity.SNACKBAR,
+            backgroundColor: Colors.black54,
+            textColor: Colors.white,
+            fontSize: 14.0,
+          );
+        }
       },
       child: const Text(
         "Sign In",
@@ -188,7 +208,7 @@ class _LoginState extends State<Login> {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (context) => Signup(),
+                      builder: (context) => const Signup(),
                     ),
                   );
                 },
