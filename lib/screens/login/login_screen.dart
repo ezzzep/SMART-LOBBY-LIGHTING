@@ -39,9 +39,9 @@ class _LoginState extends State<Login> {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const SizedBox(height: 50), // Extra spacing for balance
+                    const SizedBox(height: 20), // Extra spacing for balance
                     _buildHeader(),
-                    const SizedBox(height: 80),
+                    const SizedBox(height: 40),
                     _emailAddress(),
                     const SizedBox(height: 20),
                     _password(),
@@ -59,17 +59,16 @@ class _LoginState extends State<Login> {
   }
 
   Widget _buildHeader() {
-    return Center(
-      child: Text(
-        'Hello Again',
-        style: GoogleFonts.raleway(
-          textStyle: const TextStyle(
-            color: Colors.black,
-            fontWeight: FontWeight.bold,
-            fontSize: 32,
-          ),
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Image.asset(
+          'assets/login/smart_lighting_icon.png',
+          width: 260,
+          height: 260,
+          fit: BoxFit.cover,
         ),
-      ),
+      ],
     );
   }
 
@@ -156,7 +155,7 @@ class _LoginState extends State<Login> {
           context: context,
         );
 
-         if (!mounted) return; // ✅ Prevents async issues with context
+        if (!mounted) return; // ✅ Prevents async issues with context
 
         if (loginSuccess) {
           Navigator.pushReplacement(
