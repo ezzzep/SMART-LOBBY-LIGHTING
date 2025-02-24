@@ -1,5 +1,6 @@
 import 'package:smart_lighting/screens/signup/signup_screen.dart';
-import 'package:smart_lighting/screens/dashboard/dashboard_screen.dart'; // Import home screen
+import 'package:smart_lighting/screens/dashboard/dashboard_screen.dart';
+import 'package:smart_lighting/common/widgets/activation/activation.dart'; // Import SuccessCard
 import 'package:smart_lighting/services/service.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -158,10 +159,19 @@ class _LoginState extends State<Login> {
         if (!mounted) return; // ✅ Prevents async issues with context
 
         if (loginSuccess) {
-          Navigator.pushReplacement(
+          // Navigate to the Activation screen first
+          final isActivated = await Navigator.push(
             context,
-            MaterialPageRoute(builder: (context) => const Home()),
+            MaterialPageRoute(builder: (context) => const ActivationScreen()),
           );
+
+          // After activation, navigate to Home screen
+          if (isActivated == true) {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (context) => const Home()),
+            );
+          }
         } else {
           Fluttertoast.showToast(
             msg: "Login failed. Please check your credentials.",
