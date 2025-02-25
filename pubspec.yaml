@@ -39,6 +39,8 @@ dependencies:
   google_fonts: ^6.2.1
   firebase_auth: ^5.4.2
   lite_rolling_switch: ^1.0.1
+  vector_math: ^2.1.4
+  intl: ^0.18.1
 
 dev_dependencies:
   flutter_test:

@@ -1,5 +1,8 @@
-import 'package:smart_lighting/services/service.dart';
 import 'package:flutter/material.dart';
+import 'package:smart_lighting/services/service.dart';
+import 'package:smart_lighting/common/widgets/systemStatus/temperatureStatus/temperature_status.dart';
+import 'package:smart_lighting/common/widgets/systemStatus/humidityStatus/humidity_status.dart';
+import 'package:smart_lighting/common/widgets/systemStatus/sensorsStatus/sensors_status.dart';
 
 class Home extends StatelessWidget {
   const Home({super.key});
@@ -8,7 +11,7 @@ class Home extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Home"),
+        title: const Text("System Status"),
         leading: Builder(
           builder: (context) {
             return IconButton(
@@ -20,46 +23,19 @@ class Home extends StatelessWidget {
           },
         ),
       ),
-      drawer: Container(
-        width: 270, // Set custom width to make it smaller
-        decoration: BoxDecoration(
-          color: Colors.white, // Background color
-          borderRadius: BorderRadius.horizontal(
-              right: Radius.circular(16)), // Rounded right edges
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.2),
-              blurRadius: 5,
-              offset: Offset(2, 0), // Shadow on the right
-            ),
-          ],
-        ),
-        child: Drawer(
-          child: ListView(
-            padding: EdgeInsets.zero,
+      drawer: _buildDrawer(context),
+      body: SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 20.0, horizontal: 10.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              const DrawerHeader(
-                decoration: BoxDecoration(color: Colors.blue),
-                child: Text(
-                  'SMART LOBBY LIGHTING',
-                  style: TextStyle(color: Colors.white, fontSize: 18),
-                ),
-              ),
-              _buildDrawerItem(Icons.home, 'Home', context),
-              _buildDrawerItem(Icons.settings, 'System Tweaks', context),
-              _buildDrawerItem(Icons.account_circle, 'Account', context),
-              const Divider(), // Add a divider for separation
-              ListTile(
-                leading: const Icon(Icons.logout, color: Colors.red),
-                title: const Text(
-                  'Sign Out',
-                  style:
-                      TextStyle(fontWeight: FontWeight.bold, color: Colors.red),
-                ),
-                onTap: () async {
-                  await AuthService().signout(context: context);
-                },
-              ),
+              const TemperatureStatus(),
+              const SizedBox(height: 10),
+              const HumidityStatus(),
+              const SizedBox(height: 10),
+              _buildSensorsStatusGrid(),
             ],
           ),
         ),
@@ -67,7 +43,52 @@ class Home extends StatelessWidget {
     );
   }
 
-  // Helper function for drawer items
+  Widget _buildDrawer(BuildContext context) {
+    return Container(
+      width: 270,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: const BorderRadius.horizontal(right: Radius.circular(16)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.2),
+            blurRadius: 5,
+            offset: const Offset(2, 0),
+          ),
+        ],
+      ),
+      child: Drawer(
+        child: ListView(
+          padding: EdgeInsets.zero,
+          children: [
+            const DrawerHeader(
+              decoration: BoxDecoration(color: Colors.blue),
+              child: Text(
+                'SMART LOBBY LIGHTING',
+                style: TextStyle(color: Colors.white, fontSize: 18),
+              ),
+            ),
+            _buildDrawerItem(Icons.home, 'System Status', context),
+            _buildDrawerItem(Icons.settings, 'System Tweaks', context),
+            _buildDrawerItem(Icons.account_circle, 'Account', context),
+            const Divider(),
+            ListTile(
+              leading: const Icon(Icons.logout, color: Colors.red),
+              title: const Text(
+                'Sign Out',
+                style:
+                    TextStyle(fontWeight: FontWeight.bold, color: Colors.red),
+              ),
+              onTap: () async {
+                await AuthService().signout(context: context);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildDrawerItem(IconData icon, String title, BuildContext context) {
     return ListTile(
       leading: Icon(icon, color: Colors.blue),
@@ -75,6 +96,49 @@ class Home extends StatelessWidget {
       onTap: () {
         Navigator.pop(context);
       },
+    );
+  }
+
+  Widget _buildSensorsStatusGrid() {
+    return Padding(
+      padding: const EdgeInsets.all(10.0),
+      child: GridView.count(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        crossAxisCount: 2,
+        crossAxisSpacing: 10,
+        mainAxisSpacing: 10,
+        children: const [
+          SensorsStatus(
+            width: 150,
+            height: 180,
+            title: 'BME280',
+            subtitle: 'Temp and Humidity',
+            isActive: true,
+          ),
+          SensorsStatus(
+            width: 170,
+            height: 200,
+            title: 'PIR SENSORS',
+            subtitle: 'Motion Detection',
+            isActive: false,
+          ),
+          SensorsStatus(
+            width: 160,
+            height: 190,
+            title: 'COOLER',
+            subtitle: 'Fan Cooling System',
+            isActive: true,
+          ),
+          SensorsStatus(
+            width: 180,
+            height: 220,
+            title: 'LIGHT BULBS',
+            subtitle: 'Lobby Lighting',
+            isActive: false,
+          ),
+        ],
+      ),
     );
   }
 }
