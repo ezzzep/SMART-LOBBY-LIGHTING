@@ -3,6 +3,7 @@ import 'package:smart_lighting/services/service.dart';
 import 'package:smart_lighting/common/widgets/systemStatus/temperatureStatus/temperature_status.dart';
 import 'package:smart_lighting/common/widgets/systemStatus/humidityStatus/humidity_status.dart';
 import 'package:smart_lighting/common/widgets/systemStatus/sensorsStatus/sensors_status.dart';
+import 'package:smart_lighting/screens/systemTweaks/system_tweaks_screen.dart'; // Import System Tweaks Screen
 
 class Home extends StatelessWidget {
   const Home({super.key});
@@ -68,9 +69,10 @@ class Home extends StatelessWidget {
                 style: TextStyle(color: Colors.white, fontSize: 18),
               ),
             ),
-            _buildDrawerItem(Icons.home, 'System Status', context),
-            _buildDrawerItem(Icons.settings, 'System Tweaks', context),
-            _buildDrawerItem(Icons.account_circle, 'Account', context),
+            _buildDrawerItem(Icons.home, 'System Status', context, null),
+            _buildDrawerItem(Icons.settings, 'System Tweaks', context,
+                const SystemTweaks()), // Navigate to System Tweaks
+            _buildDrawerItem(Icons.account_circle, 'Account', context, null),
             const Divider(),
             ListTile(
               leading: const Icon(Icons.logout, color: Colors.red),
@@ -89,12 +91,19 @@ class Home extends StatelessWidget {
     );
   }
 
-  Widget _buildDrawerItem(IconData icon, String title, BuildContext context) {
+  Widget _buildDrawerItem(
+      IconData icon, String title, BuildContext context, Widget? screen) {
     return ListTile(
       leading: Icon(icon, color: Colors.blue),
       title: Text(title),
       onTap: () {
-        Navigator.pop(context);
+        Navigator.pop(context); // Close the drawer first
+        if (screen != null) {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => screen),
+          );
+        }
       },
     );
   }
