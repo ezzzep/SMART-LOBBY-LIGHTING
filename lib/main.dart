@@ -5,7 +5,6 @@ import 'package:smart_lighting/firebase_options.dart';
 import 'package:smart_lighting/screens/login/login_screen.dart';
 import 'package:smart_lighting/screens/dashboard/dashboard_screen.dart';
 
-
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -17,7 +16,7 @@ Future<void> main() async {
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({Key? key}) : super(key: key);
+  const MyApp({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -29,6 +28,8 @@ class MyApp extends StatelessWidget {
 }
 
 class AuthWrapper extends StatelessWidget {
+  const AuthWrapper({super.key});
+
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<User?>(
@@ -47,7 +48,7 @@ class AuthWrapper extends StatelessWidget {
             return const Home();
           } else {
             // Email is not verified, go to VerifyEmailScreen
-            return Home();//VerifyEmailScreen(email: user.email!);
+            return Home(); //VerifyEmailScreen(email: user.email!);
           }
         } else {
           // User is not signed in, go to Login screen
