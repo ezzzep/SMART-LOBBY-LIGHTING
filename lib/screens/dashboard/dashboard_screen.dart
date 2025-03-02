@@ -1,12 +1,40 @@
 import 'package:flutter/material.dart';
 import 'package:smart_lighting/services/service.dart';
+import 'package:lite_rolling_switch/lite_rolling_switch.dart';
+import 'package:smart_lighting/common/widgets/successCard/success_card.dart';
 import 'package:smart_lighting/common/widgets/systemStatus/temperatureStatus/temperature_status.dart';
 import 'package:smart_lighting/common/widgets/systemStatus/humidityStatus/humidity_status.dart';
 import 'package:smart_lighting/common/widgets/systemStatus/sensorsStatus/sensors_status.dart';
-import 'package:smart_lighting/screens/systemTweaks/system_tweaks_screen.dart'; // Import System Tweaks Screen
+import 'package:smart_lighting/screens/systemTweaks/system_tweaks_screen.dart';
 
-class Home extends StatelessWidget {
+class Home extends StatefulWidget {
   const Home({super.key});
+
+  @override
+  State<Home> createState() => _HomeState();
+}
+
+class _HomeState extends State<Home> {
+  bool isSwitchOn = false;
+  bool showSuccess = false;
+  final AuthService _authService = AuthService();
+
+  void toggleSwitchPosition(bool state) {
+    setState(() {
+      isSwitchOn = state;
+      showSuccess = false;
+    });
+
+    if (state) {
+      Future.delayed(const Duration(seconds: 3), () {
+        if (mounted) {
+          setState(() {
+            showSuccess = true;
+          });
+        }
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -37,6 +65,30 @@ class Home extends StatelessWidget {
               const HumidityStatus(),
               const SizedBox(height: 10),
               _buildSensorsStatusGrid(),
+              const SizedBox(height: 20),
+              Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 500),
+                      child: showSuccess
+                          ? const SuccessCard()
+                          : const Text(
+                        "SYSTEM ACTIVATION",
+                        style: TextStyle(
+                            fontSize: 20, fontWeight: FontWeight.bold),
+                        key: ValueKey("systemActivation"),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    if (!showSuccess)
+                      CustomLiteRollingSwitch(
+                        onSwitchChanged: toggleSwitchPosition,
+                      ),
+                  ],
+                ),
+              ),
             ],
           ),
         ),
@@ -71,7 +123,7 @@ class Home extends StatelessWidget {
             ),
             _buildDrawerItem(Icons.home, 'System Status', context, null),
             _buildDrawerItem(Icons.settings, 'System Tweaks', context,
-                const SystemTweaks()), // Navigate to System Tweaks
+                const SystemTweaks()),
             _buildDrawerItem(Icons.account_circle, 'Account', context, null),
             const Divider(),
             ListTile(
@@ -79,10 +131,10 @@ class Home extends StatelessWidget {
               title: const Text(
                 'Sign Out',
                 style:
-                    TextStyle(fontWeight: FontWeight.bold, color: Colors.red),
+                TextStyle(fontWeight: FontWeight.bold, color: Colors.red),
               ),
               onTap: () async {
-                await AuthService().signout(context: context);
+                await _authService.signout(context: context);
               },
             ),
           ],
@@ -97,7 +149,7 @@ class Home extends StatelessWidget {
       leading: Icon(icon, color: Colors.blue),
       title: Text(title),
       onTap: () {
-        Navigator.pop(context); // Close the drawer first
+        Navigator.pop(context);
         if (screen != null) {
           Navigator.push(
             context,
@@ -147,6 +199,44 @@ class Home extends StatelessWidget {
             isActive: false,
           ),
         ],
+      ),
+    );
+  }
+}
+
+class CustomLiteRollingSwitch extends StatefulWidget {
+  final Function(bool) onSwitchChanged;
+
+  const CustomLiteRollingSwitch({super.key, required this.onSwitchChanged});
+
+  @override
+  State<CustomLiteRollingSwitch> createState() =>
+      _CustomLiteRollingSwitchState();
+}
+
+class _CustomLiteRollingSwitchState extends State<CustomLiteRollingSwitch> {
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 130,
+      height: 42,
+      child: LiteRollingSwitch(
+        value: false,
+        textOn: 'ON',
+        textOff: 'OFF',
+        colorOn: const Color(0xff0D6EFD),
+        colorOff: const Color(0xff6A6A6A),
+        textOnColor: Colors.white,
+        textOffColor: Colors.white,
+        iconOn: Icons.done,
+        iconOff: Icons.remove_circle_outline,
+        textSize: 14.0,
+        onChanged: (bool state) {
+          widget.onSwitchChanged(state);
+        },
+        onTap: () {},
+        onDoubleTap: () {},
+        onSwipe: () {},
       ),
     );
   }

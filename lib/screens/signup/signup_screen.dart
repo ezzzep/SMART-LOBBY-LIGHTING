@@ -1,5 +1,5 @@
 import 'package:smart_lighting/screens/login/login_screen.dart';
-
+import 'package:smart_lighting/screens/verification/verify_email_screen.dart'; // If needed
 import 'package:smart_lighting/services/service.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -18,6 +18,7 @@ class _SignupState extends State<Signup> {
   bool _isLoading = false;
   String? _emailError;
   String? _passwordError;
+  final AuthService _authService = AuthService(); // Use instance of AuthService
 
   @override
   void dispose() {
@@ -27,8 +28,7 @@ class _SignupState extends State<Signup> {
   }
 
   void _validateEmail(String value) {
-    final emailRegex =
-        RegExp(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$');
+    final emailRegex = RegExp(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$');
     setState(() {
       _emailError = value.isEmpty
           ? "Email is required"
@@ -50,7 +50,7 @@ class _SignupState extends State<Signup> {
       } else if (!hasUppercase.hasMatch(value)) {
         _passwordError = "Include at least one uppercase letter";
       } else if (!hasLowercase.hasMatch(value)) {
-        _passwordError = "Include at least one uppercase letter";
+        _passwordError = "Include at least one lowercase letter";
       } else if (!hasNumber.hasMatch(value)) {
         _passwordError = "Include at least one number";
       } else if (!hasSpecialChar.hasMatch(value)) {
@@ -61,14 +61,13 @@ class _SignupState extends State<Signup> {
     });
   }
 
-  // Handle signup and navigate to verification screen
   Future<void> _handleSignup() async {
     if (_emailError != null || _passwordError != null) return;
 
     setState(() => _isLoading = true);
 
     try {
-      await AuthService().signup(
+      await _authService.signup(
         email: _emailController.text.trim(),
         password: _passwordController.text.trim(),
         context: context,
@@ -81,7 +80,6 @@ class _SignupState extends State<Signup> {
 
     setState(() => _isLoading = false);
   }
-
 
   @override
   Widget build(BuildContext context) {
@@ -190,7 +188,7 @@ class _SignupState extends State<Signup> {
               borderRadius: BorderRadius.circular(14),
               borderSide: BorderSide(
                 color: _passwordError == null &&
-                        _passwordController.text.isNotEmpty
+                    _passwordController.text.isNotEmpty
                     ? Colors.green
                     : (_passwordError != null ? Colors.red : Colors.grey),
                 width: 2,
@@ -238,7 +236,7 @@ class _SignupState extends State<Signup> {
                 ..onTap = () {
                   Navigator.pushReplacement(
                     context,
-                    MaterialPageRoute(builder: (context) => Login()),
+                    MaterialPageRoute(builder: (context) => const Login()),
                   );
                 },
             ),
