@@ -118,9 +118,9 @@ class VerifyEmailScreenState extends State<VerifyEmailScreen> {
             _isLoading
                 ? const CircularProgressIndicator()
                 : ElevatedButton(
-                    onPressed: _checkEmailVerification,
-                    child: const Text('Check Verification Status'),
-                  ),
+              onPressed: _checkEmailVerification,
+              child: const Text('Check Verification Status'),
+            ),
             const SizedBox(height: 20),
             TextButton(
               onPressed: _resendVerificationEmail,

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:smart_lighting/services/service.dart';
+import 'package:smart_lighting/services/service.dart'; // Import AuthService
 import 'package:lite_rolling_switch/lite_rolling_switch.dart';
-import 'package:smart_lighting/common/widgets/successCard/success_card.dart'; // Import SuccessCard
+import 'package:smart_lighting/common/widgets/successCard/success_card.dart';
 
 class Home extends StatefulWidget {
   const Home({super.key});
@@ -12,19 +12,20 @@ class Home extends StatefulWidget {
 
 class _HomeState extends State<Home> {
   bool isSwitchOn = false;
-  bool showSuccess = false; // Controls when SuccessCard is shown
+  bool showSuccess = false;
+  final AuthService _authService = AuthService(); // Instantiate AuthService
 
   void toggleSwitchPosition(bool state) {
     setState(() {
-      isSwitchOn = state; // Update state when switch toggles
-      showSuccess = false; // Reset success display initially
+      isSwitchOn = state;
+      showSuccess = false;
     });
 
     if (state) {
       Future.delayed(const Duration(seconds: 3), () {
         if (mounted) {
           setState(() {
-            showSuccess = true; // Show success card after delay
+            showSuccess = true;
           });
         }
       });
@@ -76,12 +77,10 @@ class _HomeState extends State<Home> {
             ListTile(
               title: const Text(
                 'Sign Out',
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                ),
+                style: TextStyle(fontWeight: FontWeight.bold),
               ),
               onTap: () async {
-                await AuthService().signout(context: context);
+                await _authService.signOut(context: context); // Use instance
               },
             ),
           ],
@@ -94,16 +93,16 @@ class _HomeState extends State<Home> {
             AnimatedSwitcher(
               duration: const Duration(milliseconds: 500),
               child: showSuccess
-                  ? const SuccessCard() // Show success after delay
+                  ? const SuccessCard()
                   : const Text(
-                      "SYSTEM ACTIVATION",
-                      style:
-                          TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                      key: ValueKey("systemActivation"),
-                    ),
+                "SYSTEM ACTIVATION",
+                style:
+                TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                key: ValueKey("systemActivation"),
+              ),
             ),
             const SizedBox(height: 10),
-            if (!showSuccess) // Hide switch when success is shown
+            if (!showSuccess)
               CustomLiteRollingSwitch(
                 onSwitchChanged: toggleSwitchPosition,
               ),
@@ -113,8 +112,6 @@ class _HomeState extends State<Home> {
     );
   }
 }
-
-// ✅ Updated CustomLiteRollingSwitch to adjust switch size
 
 class CustomLiteRollingSwitch extends StatefulWidget {
   final Function(bool) onSwitchChanged;
@@ -130,10 +127,10 @@ class _CustomLiteRollingSwitchState extends State<CustomLiteRollingSwitch> {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      width: 130, // Adjust width of the switch
-      height: 42, // Adjust height of the switch
+      width: 130,
+      height: 42,
       child: LiteRollingSwitch(
-        value: false, // Default switch state is OFF
+        value: false,
         textOn: 'ON',
         textOff: 'OFF',
         colorOn: const Color(0xff0D6EFD),
@@ -142,9 +139,9 @@ class _CustomLiteRollingSwitchState extends State<CustomLiteRollingSwitch> {
         textOffColor: Colors.white,
         iconOn: Icons.done,
         iconOff: Icons.remove_circle_outline,
-        textSize: 14.0, // Adjust text size
+        textSize: 14.0,
         onChanged: (bool state) {
-          widget.onSwitchChanged(state); // Call function when switch changes
+          widget.onSwitchChanged(state);
         },
         onTap: () {},
         onDoubleTap: () {},
