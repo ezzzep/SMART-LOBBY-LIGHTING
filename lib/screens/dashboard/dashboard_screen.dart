@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:smart_lighting/services/service.dart';
 import 'package:lite_rolling_switch/lite_rolling_switch.dart';
@@ -6,9 +7,15 @@ import 'package:smart_lighting/common/widgets/systemStatus/temperatureStatus/tem
 import 'package:smart_lighting/common/widgets/systemStatus/humidityStatus/humidity_status.dart';
 import 'package:smart_lighting/common/widgets/systemStatus/sensorsStatus/sensors_status.dart';
 import 'package:smart_lighting/screens/systemTweaks/system_tweaks_screen.dart';
+import 'package:smart_lighting/screens/setup/setup_screen.dart';
+import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:fluttertoast/fluttertoast.dart';
 
 class Home extends StatefulWidget {
-  const Home({super.key});
+  final String? esp32IP;
+
+  const Home({super.key, this.esp32IP});
 
   @override
   State<Home> createState() => _HomeState();
@@ -17,7 +24,67 @@ class Home extends StatefulWidget {
 class _HomeState extends State<Home> {
   bool isSwitchOn = false;
   bool showSuccess = false;
+  bool pirSensorActive = false;
   final AuthService _authService = AuthService();
+  Timer? _timer;
+  String? esp32IP;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadESP32IP();
+    if (widget.esp32IP != null) {
+      esp32IP = widget.esp32IP;
+      _startPolling();
+    }
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _loadESP32IP() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      esp32IP = prefs.getString('esp32IP') ?? widget.esp32IP;
+    });
+    if (esp32IP != null && esp32IP!.isNotEmpty) {
+      _startPolling();
+    }
+  }
+
+  void _startPolling() {
+    _timer?.cancel(); // Cancel any existing timer
+    _timer = Timer.periodic(Duration(seconds: 1), (timer) async {
+      if (esp32IP == null) return;
+      try {
+        final response = await http.get(Uri.parse('http://$esp32IP/pir'));
+        if (response.statusCode == 200) {
+          setState(() {
+            pirSensorActive = true; // PIR sensor is active if we get a response
+          });
+          String data = response.body.trim();
+          if (data == "MOTION DETECTED") {
+            Fluttertoast.showToast(
+              msg: "Motion Detected!",
+              toastLength: Toast.LENGTH_SHORT,
+              gravity: ToastGravity.BOTTOM,
+            );
+          }
+        } else {
+          setState(() {
+            pirSensorActive = false;
+          });
+        }
+      } catch (e) {
+        setState(() {
+          pirSensorActive = false;
+        });
+      }
+    });
+  }
 
   void toggleSwitchPosition(bool state) {
     setState(() {
@@ -76,8 +143,7 @@ class _HomeState extends State<Home> {
                           ? const SuccessCard()
                           : const Text(
                         "SYSTEM ACTIVATION",
-                        style: TextStyle(
-                            fontSize: 20, fontWeight: FontWeight.bold),
+                        style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                         key: ValueKey("systemActivation"),
                       ),
                     ),
@@ -122,16 +188,15 @@ class _HomeState extends State<Home> {
               ),
             ),
             _buildDrawerItem(Icons.home, 'System Status', context, null),
-            _buildDrawerItem(Icons.settings, 'System Tweaks', context,
-                const SystemTweaks()),
+            _buildDrawerItem(Icons.settings, 'System Tweaks', context, const SystemTweaks()),
+            _buildDrawerItem(Icons.wifi, 'Setup', context, SetupScreen()),
             _buildDrawerItem(Icons.account_circle, 'Account', context, null),
             const Divider(),
             ListTile(
               leading: const Icon(Icons.logout, color: Colors.red),
               title: const Text(
                 'Sign Out',
-                style:
-                TextStyle(fontWeight: FontWeight.bold, color: Colors.red),
+                style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red),
               ),
               onTap: () async {
                 await _authService.signout(context: context);
@@ -143,8 +208,7 @@ class _HomeState extends State<Home> {
     );
   }
 
-  Widget _buildDrawerItem(
-      IconData icon, String title, BuildContext context, Widget? screen) {
+  Widget _buildDrawerItem(IconData icon, String title, BuildContext context, Widget? screen) {
     return ListTile(
       leading: Icon(icon, color: Colors.blue),
       title: Text(title),
@@ -169,8 +233,8 @@ class _HomeState extends State<Home> {
         crossAxisCount: 2,
         crossAxisSpacing: 10,
         mainAxisSpacing: 10,
-        children: const [
-          SensorsStatus(
+        children: [
+          const SensorsStatus(
             width: 150,
             height: 180,
             title: 'BME280',
@@ -182,16 +246,16 @@ class _HomeState extends State<Home> {
             height: 200,
             title: 'PIR SENSORS',
             subtitle: 'Motion Detection',
-            isActive: false,
+            isActive: pirSensorActive,
           ),
-          SensorsStatus(
+          const SensorsStatus(
             width: 160,
             height: 190,
             title: 'COOLER',
             subtitle: 'Fan Cooling System',
             isActive: true,
           ),
-          SensorsStatus(
+          const SensorsStatus(
             width: 180,
             height: 220,
             title: 'LIGHT BULBS',
@@ -210,8 +274,7 @@ class CustomLiteRollingSwitch extends StatefulWidget {
   const CustomLiteRollingSwitch({super.key, required this.onSwitchChanged});
 
   @override
-  State<CustomLiteRollingSwitch> createState() =>
-      _CustomLiteRollingSwitchState();
+  State<CustomLiteRollingSwitch> createState() => _CustomLiteRollingSwitchState();
 }
 
 class _CustomLiteRollingSwitchState extends State<CustomLiteRollingSwitch> {
