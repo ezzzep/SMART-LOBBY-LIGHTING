@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:smart_lighting/firebase_options.dart';
 import 'package:smart_lighting/screens/login/login_screen.dart';
 import 'package:smart_lighting/screens/dashboard/dashboard_screen.dart';
-
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -17,7 +17,7 @@ Future<void> main() async {
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({Key? key}) : super(key: key);
+  const MyApp({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -29,6 +29,8 @@ class MyApp extends StatelessWidget {
 }
 
 class AuthWrapper extends StatelessWidget {
+  const AuthWrapper({super.key});
+
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<User?>(
@@ -41,17 +43,44 @@ class AuthWrapper extends StatelessWidget {
         final User? user = snapshot.data;
 
         if (user != null) {
-          // User is signed in
-          if (user.emailVerified) {
-            // Email is verified, go to Home screen
-            return const Home();
-          } else {
-            // Email is not verified, go to VerifyEmailScreen
-            return Home();//VerifyEmailScreen(email: user.email!);
-          }
+          // User is signed in, check Firestore data and email verification
+          return FutureBuilder<DocumentSnapshot>(
+            future: FirebaseFirestore.instance
+                .collection('users')
+                .doc(user.uid)
+                .get(),
+            builder: (context, firestoreSnapshot) {
+              if (firestoreSnapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+
+              if (firestoreSnapshot.hasError) {
+                // Handle Firestore errors (e.g., PERMISSION_DENIED)
+                print("Firestore error: ${firestoreSnapshot.error}");
+                return const Login(); // Redirect to Login on error
+              }
+
+              if (firestoreSnapshot.hasData && firestoreSnapshot.data!.exists) {
+                // User exists in Firestore, check email verification
+                if (user.emailVerified) {
+                  print("User ${user.email} signed in, email verified, going to Home");
+                  return const Home();
+                } else {
+                  print("User ${user.email} signed in, email not verified");
+                  // Uncomment and use VerifyEmailScreen if you have it
+                  // return VerifyEmailScreen(email: user.email!);
+                  return const Login(); // For now, redirect to Login
+                }
+              } else {
+                print("User ${user.uid} signed in but no Firestore data found");
+                return const Login(); // No Firestore data, back to Login
+              }
+            },
+          );
         } else {
-          // User is not signed in, go to Login screen
-          return Login();
+          // User is not signed in
+          print("No user signed in, showing Login");
+          return const Login();
         }
       },
     );
