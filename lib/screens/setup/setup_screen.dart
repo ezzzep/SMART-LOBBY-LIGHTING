@@ -7,6 +7,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:smart_lighting/screens/dashboard/dashboard_screen.dart';
 
 class SetupScreen extends StatefulWidget {
+  const SetupScreen({super.key});
+
   @override
   _SetupScreenState createState() => _SetupScreenState();
 }
@@ -52,7 +54,8 @@ class _SetupScreenState extends State<SetupScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Setup ESP32 Connection', style: TextStyle(color: Color(0xFFADD8E6))),
+        title: Text('Setup ESP32 Connection',
+            style: TextStyle(color: Color(0xFFADD8E6))),
         backgroundColor: Colors.white,
         flexibleSpace: Container(
           decoration: BoxDecoration(
@@ -74,20 +77,35 @@ class _SetupScreenState extends State<SetupScreen> {
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(16),
-                  boxShadow: [BoxShadow(color: Colors.grey.shade200, blurRadius: 10, offset: Offset(0, 5))],
+                  boxShadow: [
+                    BoxShadow(
+                        color: Colors.grey.shade200,
+                        blurRadius: 10,
+                        offset: Offset(0, 5))
+                  ],
                 ),
                 padding: EdgeInsets.all(20),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Wi-Fi Configuration', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFFADD8E6))),
+                    Text('Wi-Fi Configuration',
+                        style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFFADD8E6))),
                     SizedBox(height: 20),
                     _buildTextField(ssidController, 'Wi-Fi SSID', Icons.wifi),
                     SizedBox(height: 16),
-                    _buildTextField(passwordController, 'Wi-Fi Password', Icons.lock, obscure: true),
+                    _buildTextField(
+                        passwordController, 'Wi-Fi Password', Icons.lock,
+                        obscure: true),
                     if (esp32IP != null) ...[
                       SizedBox(height: 16),
-                      Text('ESP32 IP: $esp32IP', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xFFD8BFD8))),
+                      Text('ESP32 IP: $esp32IP',
+                          style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFFD8BFD8))),
                     ],
                     SizedBox(height: 20),
                     _buildConnectButton(context),
@@ -101,7 +119,9 @@ class _SetupScreenState extends State<SetupScreen> {
     );
   }
 
-  Widget _buildTextField(TextEditingController controller, String label, IconData icon, {bool obscure = false}) {
+  Widget _buildTextField(
+      TextEditingController controller, String label, IconData icon,
+      {bool obscure = false}) {
     return TextField(
       controller: controller,
       obscureText: obscure,
@@ -110,7 +130,9 @@ class _SetupScreenState extends State<SetupScreen> {
         prefixIcon: Icon(icon, color: Color(0xFFADD8E6)),
         filled: true,
         fillColor: Colors.grey.shade100,
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+        border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide.none),
       ),
     );
   }
@@ -120,29 +142,40 @@ class _SetupScreenState extends State<SetupScreen> {
       onPressed: isConnecting
           ? null
           : () async {
-        setState(() => isConnecting = true);
-        try {
-          if (ssidController.text.isEmpty || passwordController.text.isEmpty) {
-            throw Exception("Please enter Wi-Fi SSID and password");
-          }
-          await controller.configureWiFi(ssidController.text, passwordController.text);
-          setState(() {
-            esp32IP = controller.esp32IP;
-          });
-          await _saveWiFiCredentials();
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Setup successful'), backgroundColor: Color(0xFFD8BFD8), duration: Duration(milliseconds: 500)),
-          );
-          // Navigate to Home screen after successful setup
-          Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => Home(esp32IP: esp32IP)));
-        } catch (e) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Setup failed: $e'), backgroundColor: Colors.redAccent, duration: Duration(milliseconds: 500)),
-          );
-        } finally {
-          setState(() => isConnecting = false);
-        }
-      },
+              setState(() => isConnecting = true);
+              try {
+                if (ssidController.text.isEmpty ||
+                    passwordController.text.isEmpty) {
+                  throw Exception("Please enter Wi-Fi SSID and password");
+                }
+                await controller.configureWiFi(
+                    ssidController.text, passwordController.text);
+                setState(() {
+                  esp32IP = controller.esp32IP;
+                });
+                await _saveWiFiCredentials();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                      content: Text('Setup successful'),
+                      backgroundColor: Color(0xFFD8BFD8),
+                      duration: Duration(milliseconds: 500)),
+                );
+                // Navigate to Home screen after successful setup
+                Navigator.pushReplacement(
+                    context,
+                    MaterialPageRoute(
+                        builder: (context) => Home(esp32IP: esp32IP)));
+              } catch (e) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                      content: Text('Setup failed: $e'),
+                      backgroundColor: Colors.redAccent,
+                      duration: Duration(milliseconds: 500)),
+                );
+              } finally {
+                setState(() => isConnecting = false);
+              }
+            },
       style: ElevatedButton.styleFrom(
         padding: EdgeInsets.symmetric(vertical: 16),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -150,8 +183,13 @@ class _SetupScreenState extends State<SetupScreen> {
         foregroundColor: Colors.white,
       ),
       child: isConnecting
-          ? SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-          : Text('Setup', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+          ? SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(
+                  color: Colors.white, strokeWidth: 2))
+          : Text('Setup',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
     );
   }
 }
@@ -195,7 +233,8 @@ class ESP32Controller {
         if (configChar != null) break;
       }
 
-      if (configChar == null) throw Exception("Config characteristic not found");
+      if (configChar == null)
+        throw Exception("Config characteristic not found");
 
       await configChar.setNotifyValue(true);
       String configString = "WIFI:$ssid:$password";
@@ -205,9 +244,10 @@ class ESP32Controller {
       List<int> ipBytes = await configChar.read();
       esp32IP = String.fromCharCodes(ipBytes);
 
-      if (esp32IP == null || esp32IP!.isEmpty) throw Exception("ESP32 IP not received");
+      if (esp32IP == null || esp32IP!.isEmpty)
+        throw Exception("ESP32 IP not received");
     } catch (e) {
-      throw e;
+      rethrow;
     } finally {
       await esp32Device?.disconnect();
     }

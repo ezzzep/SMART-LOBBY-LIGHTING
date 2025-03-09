@@ -1,5 +1,5 @@
 import 'package:smart_lighting/screens/login/login_screen.dart';
-import 'package:smart_lighting/screens/verification/verify_email_screen.dart'; // If needed
+// If needed
 import 'package:smart_lighting/services/service.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -28,7 +28,8 @@ class _SignupState extends State<Signup> {
   }
 
   void _validateEmail(String value) {
-    final emailRegex = RegExp(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$');
+    final emailRegex =
+        RegExp(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$');
     setState(() {
       _emailError = value.isEmpty
           ? "Email is required"
@@ -188,7 +189,7 @@ class _SignupState extends State<Signup> {
               borderRadius: BorderRadius.circular(14),
               borderSide: BorderSide(
                 color: _passwordError == null &&
-                    _passwordController.text.isNotEmpty
+                        _passwordController.text.isNotEmpty
                     ? Colors.green
                     : (_passwordError != null ? Colors.red : Colors.grey),
                 width: 2,
