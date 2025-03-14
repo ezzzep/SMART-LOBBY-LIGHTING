@@ -7,8 +7,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:smart_lighting/screens/dashboard/dashboard_screen.dart';
 
 class SetupScreen extends StatefulWidget {
-  const SetupScreen({super.key});
-
   @override
   _SetupScreenState createState() => _SetupScreenState();
 }
@@ -247,7 +245,7 @@ class ESP32Controller {
       if (esp32IP == null || esp32IP!.isEmpty)
         throw Exception("ESP32 IP not received");
     } catch (e) {
-      rethrow;
+      throw e;
     } finally {
       await esp32Device?.disconnect();
     }
