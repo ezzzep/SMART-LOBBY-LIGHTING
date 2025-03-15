@@ -18,6 +18,8 @@ class _TemperatureStatusState extends State<TemperatureStatus>
   final Duration fadeInDuration = const Duration(milliseconds: 500);
   final Duration fillDuration = const Duration(seconds: 2);
   double progressDegrees = 0;
+  double previousTemperature = 0; // Track the previous temperature
+  bool isFetchingData = true;
 
   @override
   void initState() {
@@ -25,15 +27,7 @@ class _TemperatureStatusState extends State<TemperatureStatus>
     _radialProgressAnimationController =
         AnimationController(vsync: this, duration: fillDuration);
 
-    _progressAnimation = Tween(begin: 0.0, end: (widget.temperature / 50) * 360)
-        .animate(CurvedAnimation(
-        parent: _radialProgressAnimationController, curve: Curves.easeIn))
-      ..addListener(() {
-        setState(() {
-          progressDegrees = _progressAnimation.value;
-        });
-      });
-
+    _startAnimation(widget.temperature);
     _radialProgressAnimationController.forward();
   }
 
@@ -41,17 +35,30 @@ class _TemperatureStatusState extends State<TemperatureStatus>
   void didUpdateWidget(TemperatureStatus oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.temperature != widget.temperature) {
-      _radialProgressAnimationController.reset();
-      _progressAnimation = Tween(begin: 0.0, end: (widget.temperature / 50) * 360)
-          .animate(CurvedAnimation(
-          parent: _radialProgressAnimationController, curve: Curves.easeIn))
-        ..addListener(() {
-          setState(() {
-            progressDegrees = _progressAnimation.value;
-          });
-        });
-      _radialProgressAnimationController.forward();
+      // Instead of resetting, animate from the current progress to the new value
+      previousTemperature = oldWidget.temperature;
+      _startAnimation(widget.temperature);
+      _radialProgressAnimationController.forward(from: 0.0);
     }
+  }
+
+  void _startAnimation(double temperature) {
+    setState(() {
+      isFetchingData = temperature == 0.0;
+    });
+
+    // Calculate the target progress based on the new temperature
+    double targetProgress = (temperature / 50) * 360;
+    double startProgress = (previousTemperature / 50) * 360; // Start from previous value
+
+    _progressAnimation = Tween(begin: startProgress, end: targetProgress)
+        .animate(CurvedAnimation(
+        parent: _radialProgressAnimationController, curve: Curves.easeIn))
+      ..addListener(() {
+        setState(() {
+          progressDegrees = _progressAnimation.value;
+        });
+      });
   }
 
   @override
@@ -66,6 +73,7 @@ class _TemperatureStatusState extends State<TemperatureStatus>
   }
 
   Color getCircleColor(double temperature) {
+    if (temperature <= 0.0) return Colors.grey;
     if (temperature <= 25) {
       return Colors.blue;
     } else if (temperature <= 30) {
@@ -117,26 +125,32 @@ class _TemperatureStatusState extends State<TemperatureStatus>
                 ),
               ],
             ),
-            CustomPaint(
-              painter:
-              RadialPainter(progressDegrees, getCircleColor(widget.temperature)),
-              child: Container(
-                height: 90,
-                width: 90,
-                alignment: Alignment.center,
-                child: AnimatedOpacity(
-                  opacity: progressDegrees > 5 ? 1.0 : 0.0,
+            Stack(
+              alignment: Alignment.center,
+              children: [
+                CustomPaint(
+                  painter: RadialPainter(
+                      progressDegrees, getCircleColor(widget.temperature)),
+                  child: Container(
+                    height: 90,
+                    width: 90,
+                  ),
+                ),
+                AnimatedOpacity(
+                  opacity: isFetchingData || progressDegrees > 5 ? 1.0 : 0.0,
                   duration: fadeInDuration,
                   child: Text(
-                    "${widget.temperature.toStringAsFixed(1)}°C",
+                    isFetchingData
+                        ? "Fetching..."
+                        : "${widget.temperature.toStringAsFixed(1)}°C",
                     style: const TextStyle(
                         color: Colors.black,
                         fontSize: 15,
                         fontWeight: FontWeight.bold),
                   ),
                 ),
-              ),
-            )
+              ],
+            ),
           ],
         ),
       ),
@@ -173,7 +187,7 @@ class RadialPainter extends CustomPainter {
     canvas.drawArc(
       Rect.fromCircle(center: center, radius: size.width / 2),
       math.radians(-90),
-      math.radians(progressInDegrees),
+      math.radians(progressInDegrees.clamp(0, 360)),
       false,
       progressPaint,
     );

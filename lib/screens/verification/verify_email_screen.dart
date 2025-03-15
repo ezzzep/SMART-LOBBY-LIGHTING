@@ -2,19 +2,18 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:smart_lighting/screens/dashboard/dashboard_screen.dart';
+import 'package:smart_lighting/common/widgets/activation/activation.dart';
 
 class VerifyEmailScreen extends StatefulWidget {
   final String email;
 
-  const VerifyEmailScreen({super.key, required this.email}); // Fixed super.key
+  const VerifyEmailScreen({super.key, required this.email});
 
   @override
-  VerifyEmailScreenState createState() =>
-      VerifyEmailScreenState(); // Made public
+  VerifyEmailScreenState createState() => VerifyEmailScreenState();
 }
 
 class VerifyEmailScreenState extends State<VerifyEmailScreen> {
-  // Made public
   bool _isLoading = false;
 
   Future<void> _checkEmailVerification() async {
@@ -25,14 +24,14 @@ class VerifyEmailScreenState extends State<VerifyEmailScreen> {
     try {
       User? user = FirebaseAuth.instance.currentUser;
       await user?.reload(); // Refresh user state
-      user = FirebaseAuth.instance.currentUser; // Fetch updated user
+      user = FirebaseAuth.instance.currentUser;
 
       if (user?.emailVerified ?? false) {
         if (mounted) {
           // Ensure context is still valid
           Navigator.pushReplacement(
             context,
-            MaterialPageRoute(builder: (context) => const Home()),
+            MaterialPageRoute(builder: (context) => const ActivationScreen()),
           );
         }
       } else {
@@ -65,7 +64,7 @@ class VerifyEmailScreenState extends State<VerifyEmailScreen> {
     try {
       User? user = FirebaseAuth.instance.currentUser;
       await user?.reload(); // Refresh user state
-      user = FirebaseAuth.instance.currentUser; // Fetch updated user
+      user = FirebaseAuth.instance.currentUser;
 
       if (user != null && !user.emailVerified) {
         await user.sendEmailVerification();
@@ -118,9 +117,9 @@ class VerifyEmailScreenState extends State<VerifyEmailScreen> {
             _isLoading
                 ? const CircularProgressIndicator()
                 : ElevatedButton(
-                    onPressed: _checkEmailVerification,
-                    child: const Text('Check Verification Status'),
-                  ),
+              onPressed: _checkEmailVerification,
+              child: const Text('Check Verification Status'),
+            ),
             const SizedBox(height: 20),
             TextButton(
               onPressed: _resendVerificationEmail,

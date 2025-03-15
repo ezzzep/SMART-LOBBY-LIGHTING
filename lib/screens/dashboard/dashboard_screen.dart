@@ -23,6 +23,7 @@ class _HomeState extends State<Home> {
   bool pirSensorActive = false;
   double temperature = 0.0;
   double humidity = 0.0;
+  bool isFetchingData = true;
   final AuthService _authService = AuthService();
   Timer? _timer;
   String? esp32IP;
@@ -50,28 +51,45 @@ class _HomeState extends State<Home> {
     });
     if (esp32IP != null && esp32IP!.isNotEmpty) {
       _startPolling();
+    } else {
+      setState(() {
+        isFetchingData = false;
+        temperature = 0.0;
+        humidity = 0.0;
+      });
     }
   }
 
   void _startPolling() {
     _timer?.cancel();
-    _timer = Timer.periodic(Duration(seconds: 1), (timer) async {
-      if (esp32IP == null) return;
+    _timer = Timer.periodic(const Duration(seconds: 1), (timer) async {
+      if (esp32IP == null) {
+        setState(() {
+          isFetchingData = false;
+          temperature = 0.0;
+          humidity = 0.0;
+        });
+        return;
+      }
+
       try {
         final response = await http.get(Uri.parse('http://$esp32IP/sensors'));
         if (response.statusCode == 200) {
           String data = response.body.trim();
           _parseSensorData(data);
+          setState(() {
+            isFetchingData = false;
+          });
         } else {
           setState(() {
-            pirSensorActive = false;
+            isFetchingData = true;
             temperature = 0.0;
             humidity = 0.0;
           });
         }
       } catch (e) {
         setState(() {
-          pirSensorActive = false;
+          isFetchingData = true;
           temperature = 0.0;
           humidity = 0.0;
         });
@@ -131,6 +149,15 @@ class _HomeState extends State<Home> {
             mainAxisAlignment: MainAxisAlignment.start,
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
+              isFetchingData
+                  ? const Padding(
+                padding: EdgeInsets.all(16.0),
+                child: Text(
+                  "Fetching data...",
+                  style: TextStyle(fontSize: 16, color: Colors.grey),
+                ),
+              )
+                  : const SizedBox.shrink(),
               TemperatureStatus(temperature: temperature),
               const SizedBox(height: 10),
               HumidityStatus(humidity: humidity),
@@ -178,8 +205,7 @@ class _HomeState extends State<Home> {
               leading: const Icon(Icons.logout, color: Colors.red),
               title: const Text(
                 'Sign Out',
-                style:
-                TextStyle(fontWeight: FontWeight.bold, color: Colors.red),
+                style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red),
               ),
               onTap: () async {
                 await _authService.signout(context: context);

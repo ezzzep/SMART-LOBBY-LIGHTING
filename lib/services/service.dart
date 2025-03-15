@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:smart_lighting/screens/login/login_screen.dart';
 import 'package:smart_lighting/screens/verification/verify_email_screen.dart';
 import 'package:smart_lighting/screens/dashboard/dashboard_screen.dart';
+import 'package:smart_lighting/common/widgets/activation/activation.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 
 class AuthService {
@@ -26,11 +27,12 @@ class AuthService {
       if (user != null) {
         await user.sendEmailVerification(); // Send email verification
 
-        // Store user details in Firestore
+        // Store user details in Firestore with isFirstLogin set to true
         await _firestore.collection('users').doc(user.uid).set({
           'email': email,
           'createdAt': DateTime.now(),
           'isVerified': false,
+          'isFirstLogin': true, // Explicitly set for new users
         });
 
         // Show success message
@@ -92,16 +94,44 @@ class AuthService {
       );
 
       User? user = userCredential.user;
-      if (user != null && !user.emailVerified) {
+      if (user == null) {
+        throw "User object is null after sign-in.";
+      }
+
+      if (!user.emailVerified) {
         await user.sendEmailVerification(); // Resend verification email
         throw "unverified:Your email is not verified. A new verification link has been sent.";
       }
 
+      // Fetch user data from Firestore
+      DocumentSnapshot userDoc =
+      await _firestore.collection('users').doc(user.uid).get();
+
+      if (!userDoc.exists) {
+        throw "User data not found in Firestore.";
+      }
+
+      bool isFirstLogin = userDoc.get('isFirstLogin') ?? true;
+
       if (context.mounted) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (context) => const Home()),
-        );
+        if (isFirstLogin) {
+          // New user: Go to ActivationScreen
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => const ActivationScreen()),
+          );
+          // Update isFirstLogin to false
+          await _firestore
+              .collection('users')
+              .doc(user.uid)
+              .update({'isFirstLogin': false});
+        } else {
+          // Existing user: Go directly to Home
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => const Home()),
+          );
+        }
       }
       return true; // ✅ Success
     } on FirebaseAuthException catch (e) {
@@ -141,20 +171,73 @@ class AuthService {
   // CHECK EMAIL VERIFICATION STATUS
   Future<void> checkEmailVerification(BuildContext context) async {
     User? user = _auth.currentUser;
-    await user?.reload(); // Refresh user state
+    if (user == null) {
+      Fluttertoast.showToast(
+        msg: "No user is currently signed in.",
+        toastLength: Toast.LENGTH_LONG,
+        gravity: ToastGravity.SNACKBAR,
+        backgroundColor: Colors.black54,
+        textColor: Colors.white,
+        fontSize: 14.0,
+      );
+      return;
+    }
 
-    if (user != null && user.emailVerified) {
+    await user.reload(); // Refresh user state
+
+    if (user.emailVerified) {
       // Update Firestore that user is verified
       await _firestore.collection('users').doc(user.uid).update({
         'isVerified': true,
       });
 
-      if (context.mounted) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (context) => const Home()),
+      // Check if this is the user's first login
+      DocumentSnapshot userDoc =
+      await _firestore.collection('users').doc(user.uid).get();
+
+      if (!userDoc.exists) {
+        Fluttertoast.showToast(
+          msg: "User data not found in Firestore.",
+          toastLength: Toast.LENGTH_LONG,
+          gravity: ToastGravity.SNACKBAR,
+          backgroundColor: Colors.black54,
+          textColor: Colors.white,
+          fontSize: 14.0,
         );
+        return;
       }
+
+      bool isFirstLogin = userDoc.get('isFirstLogin') ?? true;
+
+      if (context.mounted) {
+        if (isFirstLogin) {
+          // First login after verification: Go to ActivationScreen
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => const ActivationScreen()),
+          );
+          // Update isFirstLogin to false
+          await _firestore
+              .collection('users')
+              .doc(user.uid)
+              .update({'isFirstLogin': false});
+        } else {
+          // Not first login: Go to Home
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => const Home()),
+          );
+        }
+      }
+    } else {
+      Fluttertoast.showToast(
+        msg: "Email is not verified. Please check your email.",
+        toastLength: Toast.LENGTH_LONG,
+        gravity: ToastGravity.SNACKBAR,
+        backgroundColor: Colors.black54,
+        textColor: Colors.white,
+        fontSize: 14.0,
+      );
     }
   }
 
@@ -162,9 +245,10 @@ class AuthService {
   Future<void> signout({required BuildContext context}) async {
     await _auth.signOut();
     if (context.mounted) {
-      Navigator.pushReplacement(
+      Navigator.pushAndRemoveUntil(
         context,
         MaterialPageRoute(builder: (context) => const Login()),
+            (route) => false, // Clear the navigation stack
       );
     }
   }

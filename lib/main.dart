@@ -4,14 +4,31 @@ import 'package:flutter/material.dart';
 import 'package:smart_lighting/firebase_options.dart';
 import 'package:smart_lighting/screens/login/login_screen.dart';
 import 'package:smart_lighting/screens/dashboard/dashboard_screen.dart';
+import 'package:smart_lighting/screens/verification/verify_email_screen.dart'; // Added
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:fluttertoast/fluttertoast.dart'; // Added for toast messages
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+  try {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+    // Optional: Log success
+    print("Firebase initialized successfully");
+  } catch (e) {
+    // Handle Firebase initialization errors
+    print("Firebase initialization error: $e");
+    Fluttertoast.showToast(
+      msg: "Failed to initialize Firebase. Please check your connection.",
+      toastLength: Toast.LENGTH_LONG,
+      gravity: ToastGravity.SNACKBAR,
+      backgroundColor: Colors.black54,
+      textColor: Colors.white,
+      fontSize: 14.0,
+    );
+  }
 
   runApp(const MyApp());
 }
@@ -24,6 +41,9 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       home: AuthWrapper(),
+      theme: ThemeData(
+        primarySwatch: Colors.blue,
+      ), // Optional: Add theme for consistency
     );
   }
 }
@@ -57,19 +77,28 @@ class AuthWrapper extends StatelessWidget {
               if (firestoreSnapshot.hasError) {
                 // Handle Firestore errors (e.g., PERMISSION_DENIED)
                 print("Firestore error: ${firestoreSnapshot.error}");
+                Fluttertoast.showToast(
+                  msg: "Error accessing user data. Please try again later.",
+                  toastLength: Toast.LENGTH_LONG,
+                  gravity: ToastGravity.SNACKBAR,
+                  backgroundColor: Colors.black54,
+                  textColor: Colors.white,
+                  fontSize: 14.0,
+                );
                 return const Login(); // Redirect to Login on error
               }
 
               if (firestoreSnapshot.hasData && firestoreSnapshot.data!.exists) {
                 // User exists in Firestore, check email verification
                 if (user.emailVerified) {
-                  print("User ${user.email} signed in, email verified, going to Home");
+                  print("User ${user.email ?? 'unknown'} signed in, email verified, going to Home");
                   return const Home();
                 } else {
-                  print("User ${user.email} signed in, email not verified");
-                  // Uncomment and use VerifyEmailScreen if you have it
-                  // return VerifyEmailScreen(email: user.email!);
-                  return const Login(); // For now, redirect to Login
+                  print("User ${user.email ?? 'unknown'} signed in, email not verified");
+                  // Navigate to VerifyEmailScreen if email is available
+                  return user.email != null
+                      ? VerifyEmailScreen(email: user.email!)
+                      : const Login(); // Fallback to Login if no email
                 }
               } else {
                 print("User ${user.uid} signed in but no Firestore data found");

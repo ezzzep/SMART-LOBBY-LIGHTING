@@ -1,12 +1,10 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:smart_lighting/screens/signup/signup_screen.dart';
-import 'package:smart_lighting/screens/dashboard/dashboard_screen.dart';
-import 'package:smart_lighting/common/widgets/activation/activation.dart';
+import 'package:smart_lighting/services/service.dart';
 
 class Login extends StatefulWidget {
   const Login({super.key});
@@ -24,8 +22,7 @@ class _LoginState extends State<Login> {
   bool _isLoading = false;
   bool _passwordHasError = false;
 
-  final FirebaseAuth _auth = FirebaseAuth.instance;
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final AuthService _authService = AuthService();
 
   @override
   void dispose() {
@@ -44,8 +41,7 @@ class _LoginState extends State<Login> {
           children: [
             Expanded(
               child: SingleChildScrollView(
-                padding:
-                const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
@@ -234,80 +230,25 @@ class _LoginState extends State<Login> {
 
         setState(() => _isLoading = true);
 
-        try {
-          UserCredential userCredential =
-          await _auth.signInWithEmailAndPassword(
-            email: _emailController.text.trim(),
-            password: _passwordController.text.trim(),
-          );
+        // Use AuthService to handle sign-in
+        bool success = await _authService.signin(
+          email: _emailController.text.trim(),
+          password: _passwordController.text.trim(),
+          context: context,
+        );
 
-          DocumentSnapshot userDoc = await _firestore
-              .collection('users')
-              .doc(userCredential.user!.uid)
-              .get();
-
-          if (userDoc.exists) {
-            bool isFirstLogin =
-                userDoc.get('isFirstLogin') ?? true; // Default to true
-            if (!mounted) return;
-
-            if (isFirstLogin) {
-              // New user: Go to ActivationScreen
-              Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(
-                    builder: (context) => const ActivationScreen()),
-              );
-              // Update isFirstLogin to false after first login
-              await _firestore
-                  .collection('users')
-                  .doc(userCredential.user!.uid)
-                  .update({'isFirstLogin': false});
-            } else {
-              // Existing user: Go directly to Home
-              Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(builder: (context) => const Home()),
-              );
-            }
-          } else {
-            setState(() {
-              _emailError = "No user data found. Please sign up.";
-            });
-          }
-        } on FirebaseAuthException catch (e) {
-          print("Error code: ${e.code}");
-          _handleLoginError(e.code);
-        } catch (e) {
-          print("Unexpected error: $e");
+        if (!success) {
           setState(() {
-            _emailError = "An unexpected error occurred.";
+            _emailError = "Login failed. Please try again.";
           });
-        } finally {
-          setState(() => _isLoading = false);
         }
+
+        setState(() => _isLoading = false);
       },
       child: _isLoading
           ? const CircularProgressIndicator(color: Colors.white)
           : const Text("Sign In", style: TextStyle(color: Colors.white)),
     );
-  }
-
-  void _handleLoginError(String errorCode) {
-    setState(() {
-      if (errorCode == "user-not-found") {
-        _emailError = "No account found for this email.";
-      } else if (errorCode == "wrong-password") {
-        _passwordError = "Wrong password, try again";
-        _passwordHasError = true;
-      } else if (errorCode == "invalid-email") {
-        _emailError = "Invalid email format.";
-      } else if (errorCode == "too-many-requests") {
-        _emailError = "Too many attempts. Try again later.";
-      } else {
-        _emailError = "Login failed. Please try again.";
-      }
-    });
   }
 
   Widget _signup(BuildContext context) {
