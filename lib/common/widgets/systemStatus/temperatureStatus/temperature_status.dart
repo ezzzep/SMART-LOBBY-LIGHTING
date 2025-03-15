@@ -3,7 +3,9 @@ import 'package:intl/intl.dart';
 import 'package:vector_math/vector_math_64.dart' as math;
 
 class TemperatureStatus extends StatefulWidget {
-  const TemperatureStatus({super.key});
+  final double temperature;
+
+  const TemperatureStatus({super.key, required this.temperature});
 
   @override
   State<TemperatureStatus> createState() => _TemperatureStatusState();
@@ -16,8 +18,6 @@ class _TemperatureStatusState extends State<TemperatureStatus>
   final Duration fadeInDuration = const Duration(milliseconds: 500);
   final Duration fillDuration = const Duration(seconds: 2);
   double progressDegrees = 0;
-  final double temperature =
-      32; // Example temperature (replace with real-time data)
 
   @override
   void initState() {
@@ -25,10 +25,9 @@ class _TemperatureStatusState extends State<TemperatureStatus>
     _radialProgressAnimationController =
         AnimationController(vsync: this, duration: fillDuration);
 
-    // Convert temperature (0 to 50°C) into degrees (0 to 360°)
-    _progressAnimation = Tween(begin: 0.0, end: (temperature / 50) * 360)
+    _progressAnimation = Tween(begin: 0.0, end: (widget.temperature / 50) * 360)
         .animate(CurvedAnimation(
-            parent: _radialProgressAnimationController, curve: Curves.easeIn))
+        parent: _radialProgressAnimationController, curve: Curves.easeIn))
       ..addListener(() {
         setState(() {
           progressDegrees = _progressAnimation.value;
@@ -38,6 +37,29 @@ class _TemperatureStatusState extends State<TemperatureStatus>
     _radialProgressAnimationController.forward();
   }
 
+  @override
+  void didUpdateWidget(TemperatureStatus oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.temperature != widget.temperature) {
+      _radialProgressAnimationController.reset();
+      _progressAnimation = Tween(begin: 0.0, end: (widget.temperature / 50) * 360)
+          .animate(CurvedAnimation(
+          parent: _radialProgressAnimationController, curve: Curves.easeIn))
+        ..addListener(() {
+          setState(() {
+            progressDegrees = _progressAnimation.value;
+          });
+        });
+      _radialProgressAnimationController.forward();
+    }
+  }
+
+  @override
+  void dispose() {
+    _radialProgressAnimationController.dispose();
+    super.dispose();
+  }
+
   String getFormattedDate() {
     DateTime now = DateTime.now();
     return DateFormat('MMMM d, yyyy').format(now);
@@ -45,11 +67,11 @@ class _TemperatureStatusState extends State<TemperatureStatus>
 
   Color getCircleColor(double temperature) {
     if (temperature <= 25) {
-      return Colors.blue; // Cool
+      return Colors.blue;
     } else if (temperature <= 30) {
-      return Colors.yellow; // Moderate
+      return Colors.yellow;
     } else {
-      return Colors.red; // Hot
+      return Colors.red;
     }
   }
 
@@ -65,7 +87,7 @@ class _TemperatureStatusState extends State<TemperatureStatus>
         padding: const EdgeInsets.symmetric(horizontal: 20),
         decoration: BoxDecoration(
           gradient: const LinearGradient(
-            colors: [Colors.red, Colors.yellow], // Red to Yellow gradient
+            colors: [Colors.red, Colors.yellow],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
@@ -97,7 +119,7 @@ class _TemperatureStatusState extends State<TemperatureStatus>
             ),
             CustomPaint(
               painter:
-                  RadialPainter(progressDegrees, getCircleColor(temperature)),
+              RadialPainter(progressDegrees, getCircleColor(widget.temperature)),
               child: Container(
                 height: 90,
                 width: 90,
@@ -106,7 +128,7 @@ class _TemperatureStatusState extends State<TemperatureStatus>
                   opacity: progressDegrees > 5 ? 1.0 : 0.0,
                   duration: fadeInDuration,
                   child: Text(
-                    "$temperature°C",
+                    "${widget.temperature.toStringAsFixed(1)}°C",
                     style: const TextStyle(
                         color: Colors.black,
                         fontSize: 15,
@@ -158,7 +180,5 @@ class RadialPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(CustomPainter oldDelegate) {
-    return true;
-  }
+  bool shouldRepaint(CustomPainter oldDelegate) => true;
 }

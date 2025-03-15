@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:lite_rolling_switch/lite_rolling_switch.dart';
-import 'package:smart_lighting/common/widgets/successCard/success_card.dart';
+
+import 'package:smart_lighting/screens/setup/setup_screen.dart';
 
 class ActivationScreen extends StatefulWidget {
   const ActivationScreen({super.key});
@@ -21,11 +22,11 @@ class _ActivationScreenState extends State<ActivationScreen> {
       isActivating = true;
     });
 
-    Future.delayed(const Duration(seconds: 5), () {
+    Future.delayed(const Duration(seconds: 2), () {
       if (mounted) {
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(builder: (context) => const SuccessCard()),
+          MaterialPageRoute(builder: (context) => const SetupScreen()),
         );
       }
     });
@@ -76,15 +77,15 @@ class _ActivationScreenState extends State<ActivationScreen> {
                         _activateSystem();
                       }
                     },
-                    onTap: () {}, // ✅ Required parameter added
-                    onDoubleTap: () {}, // ✅ Required parameter added
-                    onSwipe: () {}, // ✅ Required parameter added
+                    onTap: () {},
+                    onDoubleTap: () {},
+                    onSwipe: () {},
                   ),
                 ),
                 const SizedBox(height: 20),
                 if (isActivating)
                   const Text(
-                    "System activating, please wait for a few seconds...",
+                    "System activating, please wait...",
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w500,

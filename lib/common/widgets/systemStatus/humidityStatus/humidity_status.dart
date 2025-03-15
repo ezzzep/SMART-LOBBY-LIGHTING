@@ -3,7 +3,9 @@ import 'package:intl/intl.dart';
 import 'package:vector_math/vector_math_64.dart' as math;
 
 class HumidityStatus extends StatefulWidget {
-  const HumidityStatus({super.key});
+  final double humidity;
+
+  const HumidityStatus({super.key, required this.humidity});
 
   @override
   State<HumidityStatus> createState() => _HumidityStatusState();
@@ -16,7 +18,6 @@ class _HumidityStatusState extends State<HumidityStatus>
   final Duration fadeInDuration = const Duration(milliseconds: 500);
   final Duration fillDuration = const Duration(seconds: 2);
   double progressDegrees = 0;
-  final double humidity = 30;
 
   @override
   void initState() {
@@ -24,9 +25,9 @@ class _HumidityStatusState extends State<HumidityStatus>
     _radialProgressAnimationController =
         AnimationController(vsync: this, duration: fillDuration);
 
-    _progressAnimation = Tween(begin: 0.0, end: (humidity / 100) * 360).animate(
-        CurvedAnimation(
-            parent: _radialProgressAnimationController, curve: Curves.easeIn))
+    _progressAnimation = Tween(begin: 0.0, end: (widget.humidity / 100) * 360)
+        .animate(CurvedAnimation(
+        parent: _radialProgressAnimationController, curve: Curves.easeIn))
       ..addListener(() {
         setState(() {
           progressDegrees = _progressAnimation.value;
@@ -36,19 +37,41 @@ class _HumidityStatusState extends State<HumidityStatus>
     _radialProgressAnimationController.forward();
   }
 
+  @override
+  void didUpdateWidget(HumidityStatus oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.humidity != widget.humidity) {
+      _radialProgressAnimationController.reset();
+      _progressAnimation = Tween(begin: 0.0, end: (widget.humidity / 100) * 360)
+          .animate(CurvedAnimation(
+          parent: _radialProgressAnimationController, curve: Curves.easeIn))
+        ..addListener(() {
+          setState(() {
+            progressDegrees = _progressAnimation.value;
+          });
+        });
+      _radialProgressAnimationController.forward();
+    }
+  }
+
+  @override
+  void dispose() {
+    _radialProgressAnimationController.dispose();
+    super.dispose();
+  }
+
   String getFormattedDate() {
     DateTime now = DateTime.now();
     return DateFormat('MMMM d, yyyy').format(now);
   }
 
-  /// Determines the color based on humidity levels
   Color getHumidityColor(double humidity) {
     if (humidity >= 70) {
-      return Colors.blue[900]!; // Too humid
+      return Colors.blue[900]!;
     } else if (humidity >= 40) {
-      return Colors.blue[300]!; // Moderate
+      return Colors.blue[300]!;
     } else {
-      return Colors.red; // Dry
+      return Colors.red;
     }
   }
 
@@ -64,7 +87,7 @@ class _HumidityStatusState extends State<HumidityStatus>
         padding: const EdgeInsets.symmetric(horizontal: 20),
         decoration: BoxDecoration(
           gradient: const LinearGradient(
-            colors: [Colors.blue, Colors.yellow], // Blue to Yellow Gradient
+            colors: [Colors.blue, Colors.yellow],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
@@ -96,7 +119,7 @@ class _HumidityStatusState extends State<HumidityStatus>
             ),
             CustomPaint(
               painter:
-                  RadialPainter(progressDegrees, getHumidityColor(humidity)),
+              RadialPainter(progressDegrees, getHumidityColor(widget.humidity)),
               child: Container(
                 height: 90,
                 width: 90,
@@ -105,7 +128,7 @@ class _HumidityStatusState extends State<HumidityStatus>
                   opacity: progressDegrees > 5 ? 1.0 : 0.0,
                   duration: fadeInDuration,
                   child: Text(
-                    "$humidity%", // Display humidity
+                    "${widget.humidity.toStringAsFixed(1)}%",
                     style: const TextStyle(
                         color: Colors.black,
                         fontSize: 15,
@@ -157,7 +180,5 @@ class RadialPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(CustomPainter oldDelegate) {
-    return true;
-  }
+  bool shouldRepaint(CustomPainter oldDelegate) => true;
 }
