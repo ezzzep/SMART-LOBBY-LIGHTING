@@ -6,7 +6,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:smart_lighting/screens/signup/signup_screen.dart';
 import 'package:smart_lighting/screens/dashboard/dashboard_screen.dart';
-import 'package:smart_lighting/common/widgets/activation/activation.dart'; // Import ActivationScreen
+import 'package:smart_lighting/common/widgets/activation/activation.dart';
 
 class Login extends StatefulWidget {
   const Login({super.key});
@@ -44,7 +44,8 @@ class _LoginState extends State<Login> {
           children: [
             Expanded(
               child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                padding:
+                const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
@@ -186,7 +187,8 @@ class _LoginState extends State<Login> {
                 _obscurePassword ? Icons.visibility : Icons.visibility_off,
                 color: Colors.grey,
               ),
-              onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+              onPressed: () =>
+                  setState(() => _obscurePassword = !_obscurePassword),
             ),
           ),
           onChanged: (_) => setState(() {
@@ -245,16 +247,24 @@ class _LoginState extends State<Login> {
               .get();
 
           if (userDoc.exists) {
+            bool isFirstLogin =
+                userDoc.get('isFirstLogin') ?? true; // Default to true
             if (!mounted) return;
-            // Navigate to the Activation screen first
-            final isActivated = await Navigator.push(
-              context,
-              MaterialPageRoute(
-                  builder: (context) => const ActivationScreen()),
-            );
 
-            // After activation, navigate to Home screen
-            if (isActivated == true) {
+            if (isFirstLogin) {
+              // New user: Go to ActivationScreen
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(
+                    builder: (context) => const ActivationScreen()),
+              );
+              // Update isFirstLogin to false after first login
+              await _firestore
+                  .collection('users')
+                  .doc(userCredential.user!.uid)
+                  .update({'isFirstLogin': false});
+            } else {
+              // Existing user: Go directly to Home
               Navigator.pushReplacement(
                 context,
                 MaterialPageRoute(builder: (context) => const Home()),
