@@ -26,7 +26,8 @@ class _ActivationScreenState extends State<ActivationScreen> {
       if (mounted) {
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(builder: (context) => const SetupScreen()),
+          MaterialPageRoute(
+              builder: (context) => SetupScreen()), // Removed const
         );
       }
     });
