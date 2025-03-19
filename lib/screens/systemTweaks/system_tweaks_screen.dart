@@ -11,33 +11,15 @@ class SystemTweaks extends StatefulWidget {
 }
 
 class _SystemTweaksState extends State<SystemTweaks> {
-  int _temperature = 37; // Default TEMP
-  int _humidity = 80; // Default HUMI
+  int _temperature = 37;
+  int _humidity = 80;
+  double _lightIntensity = 1;
 
-  void _increaseTemperature() {
-    if (_temperature < 45) {
-      setState(() => _temperature++);
-    }
-  }
+  bool _isCoolerOn = false;
+  bool _isPirSensorOn = true;
+  bool _isSystemModeOn = false;
 
-  void _decreaseTemperature() {
-    if (_temperature > 35) {
-      setState(() => _temperature--);
-    }
-  }
-
-  void _increaseHumidity() {
-    if (_humidity < 90) {
-      setState(() => _humidity++);
-    }
-  }
-
-  void _decreaseHumidity() {
-    if (_humidity > 30) {
-      setState(() => _humidity--);
-    }
-  }
-
+  @override
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -57,144 +39,438 @@ class _SystemTweaksState extends State<SystemTweaks> {
       ),
       drawer: _buildDrawer(context),
       body: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          _buildSensitivityThreshold(), // Sensitivity Threshold Box
-          const SizedBox(height: 40),
+          const SizedBox(height: 9),
+          _buildSystemModeToggle(),
+          _buildSensitivityThreshold(),
+          _buildLightIntensitySlider(),
+          const SizedBox(height: 6),
+          _buildToggleSwitches(),
+          const SizedBox(height: 3),
+          _buildSaveButton(),
         ],
       ),
     );
   }
 
-  /// Sensitivity Threshold UI
-  Widget _buildSensitivityThreshold() {
+  /// ✅ **Save Button UI**
+  Widget _buildSaveButton() {
     return Container(
+      width: double.infinity,
       margin: const EdgeInsets.all(10),
-      padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 20),
-      height: 190, // Adjusted Height
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [
-            Color.fromARGB(255, 250, 68, 55),
-            Color.fromARGB(255, 36, 144, 232)
-          ], // Red to Blue Gradient
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
+      child: ElevatedButton(
+        onPressed: () {},
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.blue,
+          padding: const EdgeInsets.symmetric(vertical: 15),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8),
+          ),
         ),
-        borderRadius: BorderRadius.circular(8),
+        child: const Text(
+          'Save Settings',
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+          ),
+        ),
       ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
+    );
+  }
+
+  Widget _buildSystemModeToggle() {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+      decoration: BoxDecoration(
+        border: Border.all(color: Colors.black, width: 1),
+        borderRadius: BorderRadius.circular(8),
+        color: Colors.white,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black26,
+            blurRadius: 5,
+            spreadRadius: 2,
+            offset: const Offset(2, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           const Text(
-            'SENSITIVITY THRESHOLD',
+            "SYSTEM MODE",
             style: TextStyle(
               fontWeight: FontWeight.bold,
               fontSize: 18,
-              color: Colors.white,
             ),
           ),
-          const SizedBox(height: 15),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [
-              _buildCounter('TEMPERATURE', _temperature, _increaseTemperature,
-                  _decreaseTemperature),
-              _buildCounter(
-                  'HUMIDITY', _humidity, _increaseHumidity, _decreaseHumidity),
-            ],
+          GestureDetector(
+            onTap: () {
+              setState(() {
+                _isSystemModeOn = !_isSystemModeOn;
+              });
+            },
+            child: Container(
+              width: 118,
+              height: 40,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(20),
+                color: _isSystemModeOn ? Colors.blue : Colors.grey,
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 5),
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  Align(
+                    alignment: _isSystemModeOn
+                        ? Alignment.centerLeft
+                        : Alignment.centerRight,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                      child: Text(
+                        _isSystemModeOn ? "AUTO" : "MANUAL",
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
+                    ),
+                  ),
+                  Align(
+                    alignment: _isSystemModeOn
+                        ? Alignment.centerRight
+                        : Alignment.centerLeft,
+                    child: Container(
+                      width: 25,
+                      height: 25,
+                      decoration: const BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Colors.white,
+                      ),
+                      child: Center(
+                        child: Text(
+                          _isSystemModeOn ? "A" : "M",
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            color: _isSystemModeOn ? Colors.blue : Colors.grey,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
         ],
       ),
     );
   }
 
-  /// Counter UI (TEMP & HUMI) - Adjusted size to fit screen properly
-  Widget _buildCounter(String label, int value, VoidCallback onIncrease,
-      VoidCallback onDecrease) {
-    return Column(
-      children: [
-        // Label (TEMP / HUMI) with White Color
-        Text(
-          label,
-          style: const TextStyle(
-              fontWeight: FontWeight.bold, fontSize: 16, color: Colors.white),
-        ),
-        const SizedBox(height: 5),
-
-        // Main Container for Value & Counter
-        Container(
+  Widget _buildSensitivityThreshold() {
+    return IgnorePointer(
+      ignoring: _isSystemModeOn,
+      child: Opacity(
+        opacity: _isSystemModeOn ? 0.5 : 1.0,
+        child: Container(
+          margin: const EdgeInsets.all(10),
+          padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
-            color: const Color.fromARGB(255, 228, 220, 220),
+            gradient: const LinearGradient(
+              colors: [Colors.blue, Colors.yellow],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
             borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: Colors.black),
           ),
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
-          child: Row(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // Value Box (Optimized size)
-              Container(
-                width: 80, // Adjusted width
-                height: 55, // Adjusted height
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  border: Border.all(color: Colors.black),
-                  borderRadius: BorderRadius.circular(5),
-                  color: Colors.white,
-                ),
-                child: Text(
-                  label == "TEMPERATURE" ? "$value°C" : "$value%", // Add units
-                  style: const TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.black),
-                ),
+              const Text(
+                'SENSITIVITY THRESHOLD',
+                style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 18,
+                    color: Colors.white),
               ),
-
-              const SizedBox(width: 6), // Spacing between value and counter
-
-              // Up & Down Counter Box
-              Column(
+              const SizedBox(height: 20),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
                 children: [
-                  // Increase Button
-                  Container(
-                    width: 45, // Adjusted Width
-                    height: 28, // Adjusted Height
-                    decoration: BoxDecoration(
-                      border: Border.all(color: Colors.black),
-                      borderRadius: BorderRadius.circular(5),
-                      color: Colors.white,
-                    ),
-                    child: IconButton(
-                      icon: const Icon(Icons.arrow_drop_up,
-                          size: 22, color: Colors.black),
-                      padding: EdgeInsets.zero,
-                      onPressed: onIncrease,
-                    ),
+                  Expanded(
+                    child: _buildScrollPicker(
+                        "TEMPERATURE", 35, 45, _temperature, (value) {
+                      setState(() => _temperature = value);
+                    }),
                   ),
-                  const SizedBox(height: 4),
-
-                  // Decrease Button
-                  Container(
-                    width: 45, // Adjusted Width
-                    height: 28, // Adjusted Height
-                    decoration: BoxDecoration(
-                      border: Border.all(color: Colors.black),
-                      borderRadius: BorderRadius.circular(5),
-                      color: Colors.white,
-                    ),
-                    child: IconButton(
-                      icon: const Icon(Icons.arrow_drop_down,
-                          size: 22, color: Colors.black),
-                      padding: EdgeInsets.zero,
-                      onPressed: onDecrease,
-                    ),
+                  Expanded(
+                    child: _buildScrollPicker("HUMIDITY", 30, 90, _humidity,
+                        (value) {
+                      setState(() => _humidity = value);
+                    }),
                   ),
                 ],
               ),
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildLightIntensitySlider() {
+    return IgnorePointer(
+      ignoring: _isSystemModeOn,
+      child: Opacity(
+        opacity: _isSystemModeOn ? 0.5 : 1.0,
+        child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [Colors.red, Colors.yellow],
+              begin: Alignment.bottomLeft,
+              end: Alignment.topRight,
+            ),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Column(
+            children: [
+              const Text(
+                'LIGHT INTENSITY',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 18,
+                  color: Colors.white,
+                ),
+              ),
+              const SizedBox(height: 15),
+              Slider(
+                value: _lightIntensity,
+                min: 0,
+                max: 2,
+                divisions: 2,
+                activeColor: _lightIntensity == 0
+                    ? Colors.white
+                    : _lightIntensity == 1
+                        ? Colors.yellow
+                        : Colors.red,
+                inactiveColor: Colors.black26,
+                onChanged: _isSystemModeOn
+                    ? null
+                    : (value) {
+                        setState(() {
+                          _lightIntensity = value;
+                        });
+                      },
+              ),
+              const SizedBox(height: 5),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  _buildLightIntensityLabel("LOW", 0, Colors.white),
+                  _buildLightIntensityLabel("MID", 1, Colors.yellow),
+                  _buildLightIntensityLabel("HIGH", 2, Colors.red),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLightIntensityLabel(String text, double value, Color color) {
+    return Text(
+      text,
+      style: TextStyle(
+        color: _lightIntensity == value ? color : Colors.white70,
+        fontSize: 16,
+        fontWeight: FontWeight.bold,
+      ),
+    );
+  }
+
+  Widget _buildToggleSwitches() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+      children: [
+        _buildToggleBox("COOLER", _isCoolerOn, (value) {
+          if (!_isSystemModeOn) {
+            setState(() {
+              _isCoolerOn = value;
+            });
+          }
+        }),
+        _buildToggleBox("PIR SENSOR", _isPirSensorOn, (value) {
+          if (!_isSystemModeOn) {
+            setState(() {
+              _isPirSensorOn = value;
+            });
+          }
+        }),
       ],
+    );
+  }
+
+  Widget _buildToggleBox(String label, bool value, Function(bool) onChanged) {
+    return IgnorePointer(
+      ignoring: _isSystemModeOn,
+      child: Opacity(
+        opacity: _isSystemModeOn ? 0.5 : 1.0,
+        child: Container(
+          width: 165,
+          height: 140,
+          padding: const EdgeInsets.all(5),
+          decoration: BoxDecoration(
+            border: Border.all(color: Colors.black, width: 1),
+            borderRadius: BorderRadius.circular(8),
+            color: Colors.white,
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black26,
+                blurRadius: 5,
+                spreadRadius: 2,
+                offset: const Offset(2, 2),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                label,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                ),
+              ),
+              const SizedBox(height: 15),
+              GestureDetector(
+                onTap: _isSystemModeOn ? null : () => onChanged(!value),
+                child: Container(
+                  width: 100,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(20),
+                    color: value ? Colors.green : Colors.red,
+                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 5),
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      Align(
+                        alignment: value
+                            ? Alignment.centerLeft
+                            : Alignment.centerRight,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 10),
+                          child: Text(
+                            value ? "ON" : "OFF",
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            ),
+                          ),
+                        ),
+                      ),
+                      Align(
+                        alignment: value
+                            ? Alignment.centerRight
+                            : Alignment.centerLeft,
+                        child: Container(
+                          width: 30,
+                          height: 30,
+                          decoration: const BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: Colors.white,
+                          ),
+                          child: Center(
+                            child: Text(
+                              value ? "✔" : "✖",
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: value ? Colors.green : Colors.red,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildScrollPicker(
+      String label, int min, int max, int value, Function(int) onChanged) {
+    List<String> values = List.generate(max - min + 1,
+        (index) => "${min + index}${label == 'TEMPERATURE' ? '°C' : '%'}");
+
+    return IgnorePointer(
+      ignoring: _isSystemModeOn,
+      child: Opacity(
+        opacity: _isSystemModeOn ? 0.5 : 1.0,
+        child: Column(
+          children: [
+            Text(label,
+                style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                    color: Colors.white)),
+            const SizedBox(height: 10),
+            Container(
+              width: 145,
+              height: 103,
+              decoration: BoxDecoration(
+                border: Border.all(color: Colors.black),
+                borderRadius: BorderRadius.circular(8),
+                color: Colors.white54,
+              ),
+              child: ListWheelScrollView.useDelegate(
+                itemExtent: 50,
+                perspective: 0.002,
+                physics: _isSystemModeOn
+                    ? const NeverScrollableScrollPhysics()
+                    : const FixedExtentScrollPhysics(),
+                controller:
+                    FixedExtentScrollController(initialItem: value - min),
+                onSelectedItemChanged: (index) =>
+                    setState(() => onChanged(min + index)),
+                childDelegate: ListWheelChildBuilderDelegate(
+                  childCount: values.length,
+                  builder: (context, index) {
+                    bool isSelected = (min + index) == value;
+                    return Center(
+                      child: Text(
+                        values[index],
+                        style: TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.bold,
+                          color: isSelected ? Colors.red : Colors.black,
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -211,7 +487,8 @@ class _SystemTweaksState extends State<SystemTweaks> {
             ),
           ),
           _buildDrawerItem(Icons.home, 'System Status', context, const Home()),
-          _buildDrawerItem(Icons.settings, 'System Tweaks', context, null),
+          _buildDrawerItem(
+              Icons.settings, 'System Tweaks', context, const SystemTweaks()),
           _buildDrawerItem(Icons.wifi, 'Setup', context, SetupScreen()),
           _buildDrawerItem(Icons.account_circle, 'Account', context, null),
           const Divider(),
