@@ -20,7 +20,6 @@ class _SystemTweaksState extends State<SystemTweaks> {
   bool _isSystemModeOn = false;
 
   @override
-  @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
@@ -45,16 +44,15 @@ class _SystemTweaksState extends State<SystemTweaks> {
           _buildSystemModeToggle(),
           _buildSensitivityThreshold(),
           _buildLightIntensitySlider(),
-          const SizedBox(height: 6),
+          const SizedBox(height: 8),
           _buildToggleSwitches(),
-          const SizedBox(height: 3),
+          const SizedBox(height: 5),
           _buildSaveButton(),
         ],
       ),
     );
   }
 
-  /// ✅ **Save Button UI**
   Widget _buildSaveButton() {
     return Container(
       width: double.infinity,
@@ -69,7 +67,7 @@ class _SystemTweaksState extends State<SystemTweaks> {
           ),
         ),
         child: const Text(
-          'Save Settings',
+          'SAVE SETTINGS',
           style: TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.bold,
@@ -85,17 +83,8 @@ class _SystemTweaksState extends State<SystemTweaks> {
       margin: const EdgeInsets.symmetric(horizontal: 10),
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
       decoration: BoxDecoration(
-        border: Border.all(color: Colors.black, width: 1),
         borderRadius: BorderRadius.circular(8),
-        color: Colors.white,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black26,
-            blurRadius: 5,
-            spreadRadius: 2,
-            offset: const Offset(2, 2),
-          ),
-        ],
+        color: const Color.fromARGB(179, 155, 194, 166),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -103,6 +92,7 @@ class _SystemTweaksState extends State<SystemTweaks> {
           const Text(
             "SYSTEM MODE",
             style: TextStyle(
+              color: Colors.black87,
               fontWeight: FontWeight.bold,
               fontSize: 18,
             ),
@@ -328,15 +318,13 @@ class _SystemTweaksState extends State<SystemTweaks> {
           height: 140,
           padding: const EdgeInsets.all(5),
           decoration: BoxDecoration(
-            border: Border.all(color: Colors.black, width: 1),
             borderRadius: BorderRadius.circular(8),
             color: Colors.white,
             boxShadow: [
               BoxShadow(
                 color: Colors.black26,
-                blurRadius: 5,
-                spreadRadius: 2,
-                offset: const Offset(2, 2),
+                blurRadius: 1,
+                spreadRadius: 1,
               ),
             ],
           ),
