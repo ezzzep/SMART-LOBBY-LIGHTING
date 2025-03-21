@@ -37,18 +37,21 @@ class _SystemTweaksState extends State<SystemTweaks> {
         ),
       ),
       drawer: _buildDrawer(context),
-      body: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const SizedBox(height: 9),
-          _buildSystemModeToggle(),
-          _buildSensitivityThreshold(),
-          _buildLightIntensitySlider(),
-          const SizedBox(height: 8),
-          _buildToggleSwitches(),
-          const SizedBox(height: 5),
-          _buildSaveButton(),
-        ],
+      body: SingleChildScrollView( // Wrap Column in SingleChildScrollView
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 10.0), // Add padding for better spacing
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _buildSystemModeToggle(),
+              _buildSensitivityThreshold(),
+              _buildLightIntensitySlider(),
+              _buildToggleSwitches(),
+              _buildSaveButton(),
+              const SizedBox(height: 20), // Add bottom padding to prevent cutoff
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -80,7 +83,7 @@ class _SystemTweaksState extends State<SystemTweaks> {
 
   Widget _buildSystemModeToggle() {
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 10),
+      margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(8),
@@ -200,9 +203,9 @@ class _SystemTweaksState extends State<SystemTweaks> {
                   ),
                   Expanded(
                     child: _buildScrollPicker("HUMIDITY", 30, 90, _humidity,
-                        (value) {
-                      setState(() => _humidity = value);
-                    }),
+                            (value) {
+                          setState(() => _humidity = value);
+                        }),
                   ),
                 ],
               ),
@@ -248,16 +251,16 @@ class _SystemTweaksState extends State<SystemTweaks> {
                 activeColor: _lightIntensity == 0
                     ? Colors.white
                     : _lightIntensity == 1
-                        ? Colors.yellow
-                        : Colors.red,
+                    ? Colors.yellow
+                    : Colors.red,
                 inactiveColor: Colors.black26,
                 onChanged: _isSystemModeOn
                     ? null
                     : (value) {
-                        setState(() {
-                          _lightIntensity = value;
-                        });
-                      },
+                  setState(() {
+                    _lightIntensity = value;
+                  });
+                },
               ),
               const SizedBox(height: 5),
               Row(
@@ -406,7 +409,7 @@ class _SystemTweaksState extends State<SystemTweaks> {
   Widget _buildScrollPicker(
       String label, int min, int max, int value, Function(int) onChanged) {
     List<String> values = List.generate(max - min + 1,
-        (index) => "${min + index}${label == 'TEMPERATURE' ? '°C' : '%'}");
+            (index) => "${min + index}${label == 'TEMPERATURE' ? '°C' : '%'}");
 
     return IgnorePointer(
       ignoring: _isSystemModeOn,
@@ -435,7 +438,7 @@ class _SystemTweaksState extends State<SystemTweaks> {
                     ? const NeverScrollableScrollPhysics()
                     : const FixedExtentScrollPhysics(),
                 controller:
-                    FixedExtentScrollController(initialItem: value - min),
+                FixedExtentScrollController(initialItem: value - min),
                 onSelectedItemChanged: (index) =>
                     setState(() => onChanged(min + index)),
                 childDelegate: ListWheelChildBuilderDelegate(
@@ -477,7 +480,7 @@ class _SystemTweaksState extends State<SystemTweaks> {
           _buildDrawerItem(Icons.home, 'System Status', context, const Home()),
           _buildDrawerItem(
               Icons.settings, 'System Tweaks', context, const SystemTweaks()),
-          _buildDrawerItem(Icons.wifi, 'Setup', context, SetupScreen()),
+          _buildDrawerItem(Icons.wifi, 'Setup', context, const SetupScreen()),
           _buildDrawerItem(Icons.account_circle, 'Account', context, null),
           const Divider(),
           ListTile(
@@ -491,7 +494,7 @@ class _SystemTweaksState extends State<SystemTweaks> {
               Navigator.pushAndRemoveUntil(
                 context,
                 MaterialPageRoute(builder: (context) => const Home()),
-                (route) => false,
+                    (route) => false,
               );
             },
           ),

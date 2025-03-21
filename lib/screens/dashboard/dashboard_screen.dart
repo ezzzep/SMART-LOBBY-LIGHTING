@@ -23,7 +23,6 @@ class _HomeState extends State<Home> {
   bool pirSensorActive = false;
   double temperature = 0.0;
   double humidity = 0.0;
-  bool isFetchingData = true;
   final AuthService _authService = AuthService();
   Timer? _timer;
   String? esp32IP;
@@ -51,47 +50,35 @@ class _HomeState extends State<Home> {
     });
     if (esp32IP != null && esp32IP!.isNotEmpty) {
       _startPolling();
-    } else {
-      setState(() {
-        isFetchingData = false;
-        temperature = 0.0;
-        humidity = 0.0;
-      });
     }
   }
 
   void _startPolling() {
     _timer?.cancel();
-    _timer = Timer.periodic(const Duration(seconds: 1), (timer) async {
-      if (esp32IP == null) {
-        setState(() {
-          isFetchingData = false;
-          temperature = 0.0;
-          humidity = 0.0;
-        });
-        return;
-      }
-
+    _timer = Timer.periodic(Duration(seconds: 1), (timer) async {
+      if (esp32IP == null) return;
       try {
         final response = await http.get(Uri.parse('http://$esp32IP/sensors'));
+        print('Flutter: HTTP Response Status: ${response.statusCode}');
+        print('Flutter: Raw Response: ${response.body}');
+
         if (response.statusCode == 200) {
           String data = response.body.trim();
           _parseSensorData(data);
-          setState(() {
-            isFetchingData = false;
-          });
         } else {
           setState(() {
-            isFetchingData = true;
+            pirSensorActive = false;
             temperature = 0.0;
             humidity = 0.0;
+            print('Flutter: Sensor Inactive - Status Code: ${response.statusCode}');
           });
         }
       } catch (e) {
         setState(() {
-          isFetchingData = true;
+          pirSensorActive = false;
           temperature = 0.0;
           humidity = 0.0;
+          print('Flutter: Error polling ESP32: $e');
         });
       }
     });
@@ -103,21 +90,27 @@ class _HomeState extends State<Home> {
       if (data.startsWith("ERROR")) {
         temperature = 0.0;
         humidity = 0.0;
+        print('Flutter: Sensor Error');
       } else {
         List<String> parts = data.split(",");
         for (String part in parts) {
           if (part.startsWith("TEMP:")) {
             temperature = double.tryParse(part.split(":")[1]) ?? 0.0;
+            print('Flutter: Temperature: $temperature');
           } else if (part.startsWith("HUMID:")) {
             humidity = double.tryParse(part.split(":")[1]) ?? 0.0;
+            print('Flutter: Humidity: $humidity');
           } else if (part.startsWith("PIR:")) {
             String pirStatus = part.split(":")[1];
             if (pirStatus == "MOTION DETECTED") {
+              print('Flutter: Motion Detected!');
               Fluttertoast.showToast(
                 msg: "Motion Detected!",
                 toastLength: Toast.LENGTH_SHORT,
                 gravity: ToastGravity.BOTTOM,
               );
+            } else {
+              print('Flutter: PIR Status: $pirStatus');
             }
           }
         }
@@ -149,15 +142,6 @@ class _HomeState extends State<Home> {
             mainAxisAlignment: MainAxisAlignment.start,
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              isFetchingData
-                  ? const Padding(
-                padding: EdgeInsets.all(16.0),
-                child: Text(
-                  "Fetching data...",
-                  style: TextStyle(fontSize: 16, color: Colors.grey),
-                ),
-              )
-                  : const SizedBox.shrink(),
               TemperatureStatus(temperature: temperature),
               const SizedBox(height: 10),
               HumidityStatus(humidity: humidity),
@@ -196,9 +180,8 @@ class _HomeState extends State<Home> {
               ),
             ),
             _buildDrawerItem(Icons.home, 'System Status', context, null),
-            _buildDrawerItem(
-                Icons.settings, 'System Tweaks', context, const SystemTweaks()),
-            _buildDrawerItem(Icons.wifi, 'Setup', context, SetupScreen()),
+            _buildDrawerItem(Icons.settings, 'System Tweaks', context, const SystemTweaks()),
+            _buildDrawerItem(Icons.wifi, 'Setup', context, const SetupScreen()),
             _buildDrawerItem(Icons.account_circle, 'Account', context, null),
             const Divider(),
             ListTile(
@@ -217,8 +200,7 @@ class _HomeState extends State<Home> {
     );
   }
 
-  Widget _buildDrawerItem(
-      IconData icon, String title, BuildContext context, Widget? screen) {
+  Widget _buildDrawerItem(IconData icon, String title, BuildContext context, Widget? screen) {
     return ListTile(
       leading: Icon(icon, color: Colors.blue),
       title: Text(title),
