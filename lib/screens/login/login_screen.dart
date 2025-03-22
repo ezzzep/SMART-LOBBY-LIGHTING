@@ -3,6 +3,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:fluttertoast/fluttertoast.dart';
+import 'package:smart_lighting/screens/ForgotPasswordScreen/forgot_password_screen.dart'; // Added
 import 'package:smart_lighting/screens/signup/signup_screen.dart';
 import 'package:smart_lighting/services/service.dart';
 
@@ -51,7 +52,9 @@ class _LoginState extends State<Login> {
                     _emailAddress(),
                     const SizedBox(height: 20),
                     _password(),
-                    const SizedBox(height: 50),
+                    const SizedBox(height: 10),
+                    _forgotPassword(context), // Added
+                    const SizedBox(height: 40),
                     _signin(context),
                   ],
                 ),
@@ -193,6 +196,32 @@ class _LoginState extends State<Login> {
           }),
         ),
       ],
+    );
+  }
+
+  Widget _forgotPassword(BuildContext context) {
+    return Align(
+      alignment: Alignment.centerRight,
+      child: TextButton(
+        onPressed: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => const ForgotPasswordScreen(),
+            ),
+          );
+        },
+        child: Text(
+          "Forgot Password?",
+          style: GoogleFonts.raleway(
+            textStyle: const TextStyle(
+              color: Color(0xff0D6EFD),
+              fontWeight: FontWeight.w500,
+              fontSize: 14,
+            ),
+          ),
+        ),
+      ),
     );
   }
 
