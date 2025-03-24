@@ -1,3 +1,4 @@
+// service.dart
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
@@ -11,7 +12,6 @@ class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
-  // Add this getter
   User? get currentUser => _auth.currentUser;
 
   // SIGN UP with Email Verification and Firestore Storage
@@ -29,17 +29,15 @@ class AuthService {
 
       User? user = userCredential.user;
       if (user != null) {
-        await user.sendEmailVerification(); // Send email verification
+        await user.sendEmailVerification();
 
-        // Store user details in Firestore with isFirstLogin set to true
         await _firestore.collection('users').doc(user.uid).set({
           'email': email,
           'createdAt': DateTime.now(),
           'isVerified': false,
-          'isFirstLogin': true, // Explicitly set for new users
+          'isFirstLogin': true,
         });
 
-        // Show success message
         Fluttertoast.showToast(
           msg: "Verification email sent. Please check your inbox.",
           toastLength: Toast.LENGTH_LONG,
@@ -85,7 +83,7 @@ class AuthService {
     }
   }
 
-  // SIGN IN (Only allows verified users)
+  // SIGN IN (Only allows verified users, updates Firestore email if changed)
   Future<bool> signin({
     required String email,
     required String password,
@@ -103,11 +101,10 @@ class AuthService {
       }
 
       if (!user.emailVerified) {
-        await user.sendEmailVerification(); // Resend verification email
+        await user.sendEmailVerification();
         throw "unverified:Your email is not verified. A new verification link has been sent.";
       }
 
-      // Fetch user data from Firestore
       DocumentSnapshot userDoc =
           await _firestore.collection('users').doc(user.uid).get();
 
@@ -115,29 +112,35 @@ class AuthService {
         throw "User data not found in Firestore.";
       }
 
+      // Update Firestore email if it differs (e.g., after verifyBeforeUpdateEmail)
+      String firestoreEmail = userDoc.get('email') ?? '';
+      if (firestoreEmail != user.email) {
+        await _firestore.collection('users').doc(user.uid).update({
+          'email': user.email,
+        });
+        print('Updated Firestore email to match Firebase Auth: ${user.email}');
+      }
+
       bool isFirstLogin = userDoc.get('isFirstLogin') ?? true;
 
       if (context.mounted) {
         if (isFirstLogin) {
-          // New user: Go to ActivationScreen
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(builder: (context) => const ActivationScreen()),
           );
-          // Update isFirstLogin to false
           await _firestore
               .collection('users')
               .doc(user.uid)
               .update({'isFirstLogin': false});
         } else {
-          // Existing user: Go directly to Home
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(builder: (context) => const Home()),
           );
         }
       }
-      return true; // ✅ Success
+      return true;
     } on FirebaseAuthException catch (e) {
       String message;
       if (e.code == 'user-not-found' || e.code == 'invalid-email') {
@@ -158,7 +161,7 @@ class AuthService {
           fontSize: 14.0,
         );
       }
-      return false; // ❌ Failure
+      return false;
     } catch (e) {
       Fluttertoast.showToast(
         msg: "Login failed: ${e.toString()}",
@@ -168,7 +171,7 @@ class AuthService {
         textColor: Colors.white,
         fontSize: 14.0,
       );
-      return false; // ❌ Failure
+      return false;
     }
   }
 
@@ -187,15 +190,13 @@ class AuthService {
       return;
     }
 
-    await user.reload(); // Refresh user state
+    await user.reload();
 
     if (user.emailVerified) {
-      // Update Firestore that user is verified
       await _firestore.collection('users').doc(user.uid).update({
         'isVerified': true,
       });
 
-      // Check if this is the user's first login
       DocumentSnapshot userDoc =
           await _firestore.collection('users').doc(user.uid).get();
 
@@ -215,18 +216,15 @@ class AuthService {
 
       if (context.mounted) {
         if (isFirstLogin) {
-          // First login after verification: Go to ActivationScreen
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(builder: (context) => const ActivationScreen()),
           );
-          // Update isFirstLogin to false
           await _firestore
               .collection('users')
               .doc(user.uid)
               .update({'isFirstLogin': false});
         } else {
-          // Not first login: Go to Home
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(builder: (context) => const Home()),
@@ -252,8 +250,103 @@ class AuthService {
       Navigator.pushAndRemoveUntil(
         context,
         MaterialPageRoute(builder: (context) => const Login()),
-        (route) => false, // Clear the navigation stack
+        (route) => false,
       );
+    }
+  }
+
+  // REAUTHENTICATE USER
+  Future<void> reauthenticate(String password) async {
+    User? user = _auth.currentUser;
+    if (user == null) {
+      throw Exception("No user is currently signed in.");
+    }
+
+    try {
+      print('Reauthenticating user: ${user.email}');
+      AuthCredential credential = EmailAuthProvider.credential(
+        email: user.email ?? '',
+        password: password,
+      );
+      await user.reauthenticateWithCredential(credential);
+      print('Reauthentication successful');
+    } on FirebaseAuthException catch (e) {
+      String message;
+      if (e.code == 'wrong-password') {
+        message = 'Incorrect password. Please try again.';
+      } else if (e.code == 'too-many-requests') {
+        message = 'Too many attempts. Please try again later.';
+      } else {
+        message = 'Re-authentication failed: ${e.message} (code: ${e.code})';
+      }
+      print('Reauthentication error: $message');
+      throw Exception(message);
+    }
+  }
+
+  // UPDATE EMAIL (Using verifyBeforeUpdateEmail)
+  Future<void> updateEmail(String newEmail) async {
+    User? user = _auth.currentUser;
+    if (user == null) {
+      throw Exception("No user is currently signed in.");
+    }
+
+    try {
+      print('Current email: ${user.email}');
+      print('Sending verification email to update to: $newEmail');
+      await user.verifyBeforeUpdateEmail(newEmail);
+      print(
+          'Verification email sent to $newEmail. Email will update once verified.');
+      // Firestore update happens on next sign-in
+    } on FirebaseAuthException catch (e) {
+      String message;
+      switch (e.code) {
+        case 'email-already-in-use':
+          message = 'This email is already in use by another account.';
+          break;
+        case 'invalid-email':
+          message = 'The email address is not valid.';
+          break;
+        case 'requires-recent-login':
+          message = 'Please re-authenticate and try again.';
+          break;
+        case 'operation-not-allowed':
+          message = 'Email updates are restricted in this Firebase project.';
+          break;
+        default:
+          message =
+              'Failed to send verification email: ${e.message} (code: ${e.code})';
+      }
+      print('Update email error: $message');
+      throw Exception(message);
+    } catch (e) {
+      print('Unexpected error in updateEmail: $e');
+      throw Exception('Failed to update email: $e');
+    }
+  }
+
+  // DELETE ACCOUNT
+  Future<void> deleteAccount() async {
+    User? user = _auth.currentUser;
+    if (user == null) {
+      throw Exception("No user is currently signed in.");
+    }
+
+    try {
+      print('Deleting Firestore data for user: ${user.uid}');
+      await _firestore.collection('users').doc(user.uid).delete();
+      print('Firestore data deleted');
+      await user.delete();
+      print('User deleted from Firebase Auth');
+    } on FirebaseAuthException catch (e) {
+      String message;
+      if (e.code == 'requires-recent-login') {
+        message = 'Please re-authenticate and try again.';
+      } else {
+        message = 'Failed to delete account: ${e.message} (code: ${e.code})';
+      }
+      print('Delete account error: $message');
+      throw Exception(message);
     }
   }
 }
