@@ -70,7 +70,8 @@ class _HomeState extends State<Home> {
             pirSensorActive = false;
             temperature = 0.0;
             humidity = 0.0;
-            print('Flutter: Sensor Inactive - Status Code: ${response.statusCode}');
+            print(
+                'Flutter: Sensor Inactive - Status Code: ${response.statusCode}');
           });
         }
       } catch (e) {
@@ -172,15 +173,50 @@ class _HomeState extends State<Home> {
         child: ListView(
           padding: EdgeInsets.zero,
           children: [
-            const DrawerHeader(
-              decoration: BoxDecoration(color: Colors.blue),
-              child: Text(
-                'SMART LOBBY LIGHTING',
-                style: TextStyle(color: Colors.white, fontSize: 18),
+            DrawerHeader(
+              decoration: const BoxDecoration(color: Colors.blue),
+              child: FutureBuilder(
+                future: _getUserInfo(),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(
+                      child: CircularProgressIndicator(
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
+                    );
+                  } else if (snapshot.hasError || !snapshot.hasData) {
+                    return const Text(
+                      'User Not Found',
+                      style: TextStyle(color: Colors.white, fontSize: 18),
+                    );
+                  } else {
+                    String userInfo = snapshot.data as String;
+                    return Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Welcome',
+                          style: TextStyle(color: Colors.white, fontSize: 14),
+                        ),
+                        const SizedBox(height: 5),
+                        Text(
+                          userInfo,
+                          style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    );
+                  }
+                },
               ),
             ),
             _buildDrawerItem(Icons.home, 'System Status', context, null),
-            _buildDrawerItem(Icons.settings, 'System Tweaks', context, const SystemTweaks()),
+            _buildDrawerItem(
+                Icons.settings, 'System Tweaks', context, const SystemTweaks()),
             _buildDrawerItem(Icons.wifi, 'Setup', context, const SetupScreen()),
             _buildDrawerItem(Icons.account_circle, 'Account', context, null),
             const Divider(),
@@ -188,7 +224,8 @@ class _HomeState extends State<Home> {
               leading: const Icon(Icons.logout, color: Colors.red),
               title: const Text(
                 'Sign Out',
-                style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red),
+                style:
+                    TextStyle(fontWeight: FontWeight.bold, color: Colors.red),
               ),
               onTap: () async {
                 await _authService.signout(context: context);
@@ -200,7 +237,19 @@ class _HomeState extends State<Home> {
     );
   }
 
-  Widget _buildDrawerItem(IconData icon, String title, BuildContext context, Widget? screen) {
+  Future<String> _getUserInfo() async {
+    final user =
+        _authService.currentUser; // Now works with the updated AuthService
+    if (user != null) {
+      return user.displayName?.isNotEmpty == true
+          ? user.displayName!
+          : user.email ?? 'Unknown User';
+    }
+    return 'Unknown User';
+  }
+
+  Widget _buildDrawerItem(
+      IconData icon, String title, BuildContext context, Widget? screen) {
     return ListTile(
       leading: Icon(icon, color: Colors.blue),
       title: Text(title),

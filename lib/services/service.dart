@@ -11,6 +11,9 @@ class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
+  // Add this getter
+  User? get currentUser => _auth.currentUser;
+
   // SIGN UP with Email Verification and Firestore Storage
   Future<void> signup({
     required String email,
@@ -18,7 +21,8 @@ class AuthService {
     required BuildContext context,
   }) async {
     try {
-      UserCredential userCredential = await _auth.createUserWithEmailAndPassword(
+      UserCredential userCredential =
+          await _auth.createUserWithEmailAndPassword(
         email: email,
         password: password,
       );
@@ -105,7 +109,7 @@ class AuthService {
 
       // Fetch user data from Firestore
       DocumentSnapshot userDoc =
-      await _firestore.collection('users').doc(user.uid).get();
+          await _firestore.collection('users').doc(user.uid).get();
 
       if (!userDoc.exists) {
         throw "User data not found in Firestore.";
@@ -193,7 +197,7 @@ class AuthService {
 
       // Check if this is the user's first login
       DocumentSnapshot userDoc =
-      await _firestore.collection('users').doc(user.uid).get();
+          await _firestore.collection('users').doc(user.uid).get();
 
       if (!userDoc.exists) {
         Fluttertoast.showToast(
@@ -248,7 +252,7 @@ class AuthService {
       Navigator.pushAndRemoveUntil(
         context,
         MaterialPageRoute(builder: (context) => const Login()),
-            (route) => false, // Clear the navigation stack
+        (route) => false, // Clear the navigation stack
       );
     }
   }
