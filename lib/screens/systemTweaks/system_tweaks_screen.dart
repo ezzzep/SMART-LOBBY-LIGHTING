@@ -37,18 +37,19 @@ class _SystemTweaksState extends State<SystemTweaks> {
         ),
       ),
       drawer: _buildDrawer(context),
-      body: SingleChildScrollView( // Wrap Column in SingleChildScrollView
+      body: SingleChildScrollView(
         child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 10.0), // Add padding for better spacing
+          padding: const EdgeInsets.symmetric(vertical: 10.0),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              _buildSystemModeToggle(),
+              _buildSystemModeRow(),
+              const SizedBox(height: 5),
               _buildSensitivityThreshold(),
               _buildLightIntensitySlider(),
+              const SizedBox(height: 15),
               _buildToggleSwitches(),
-              _buildSaveButton(),
-              const SizedBox(height: 20), // Add bottom padding to prevent cutoff
+              const SizedBox(height: 20),
             ],
           ),
         ),
@@ -56,111 +57,101 @@ class _SystemTweaksState extends State<SystemTweaks> {
     );
   }
 
-  Widget _buildSaveButton() {
-    return Container(
-      width: double.infinity,
-      margin: const EdgeInsets.all(10),
-      child: ElevatedButton(
-        onPressed: () {},
-        style: ElevatedButton.styleFrom(
-          backgroundColor: Colors.blue,
-          padding: const EdgeInsets.symmetric(vertical: 15),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(8),
-          ),
-        ),
-        child: const Text(
-          'SAVE SETTINGS',
-          style: TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-            color: Colors.white,
-          ),
-        ),
+  Widget _buildSystemModeRow() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.end, // Aligns toggle to the right
+        children: [
+          _buildSystemModeToggle(),
+        ],
       ),
     );
   }
 
+  // Widget _buildSaveButton() {
+  //   return SizedBox(
+  //     width: 118,
+  //     height: 40,
+  //     child: ElevatedButton(
+  //       onPressed: () {},
+  //       style: ElevatedButton.styleFrom(
+  //         backgroundColor: const Color.fromARGB(255, 226, 231, 235),
+  //         shape: RoundedRectangleBorder(
+  //           borderRadius: BorderRadius.circular(20),
+  //         ),
+  //       ),
+  //       child: const Text(
+  //         'SAVE',
+  //         style: TextStyle(
+  //           fontSize: 16,
+  //           fontWeight: FontWeight.bold,
+  //           color: Colors.black38,
+  //         ),
+  //       ),
+  //     ),
+  //   );
+  // }
+
   Widget _buildSystemModeToggle() {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(8),
-        color: const Color.fromARGB(179, 155, 194, 166),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          const Text(
-            "SYSTEM MODE",
-            style: TextStyle(
-              color: Colors.black87,
-              fontWeight: FontWeight.bold,
-              fontSize: 18,
-            ),
-          ),
-          GestureDetector(
-            onTap: () {
-              setState(() {
-                _isSystemModeOn = !_isSystemModeOn;
-              });
-            },
-            child: Container(
-              width: 118,
-              height: 40,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(20),
-                color: _isSystemModeOn ? Colors.blue : Colors.grey,
-              ),
-              padding: const EdgeInsets.symmetric(horizontal: 5),
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  Align(
-                    alignment: _isSystemModeOn
-                        ? Alignment.centerLeft
-                        : Alignment.centerRight,
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 10),
-                      child: Text(
-                        _isSystemModeOn ? "AUTO" : "MANUAL",
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                        ),
-                      ),
-                    ),
+    return GestureDetector(
+      onTap: () {
+        setState(() {
+          _isSystemModeOn = !_isSystemModeOn;
+        });
+      },
+      child: Container(
+        width: 118,
+        height: 40,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(20),
+          color: _isSystemModeOn ? Colors.blue : Colors.grey,
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 5),
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            Align(
+              alignment: _isSystemModeOn
+                  ? Alignment.centerLeft
+                  : Alignment.centerRight,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                child: Text(
+                  _isSystemModeOn ? "AUTO" : "MANUAL",
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
                   ),
-                  Align(
-                    alignment: _isSystemModeOn
-                        ? Alignment.centerRight
-                        : Alignment.centerLeft,
-                    child: Container(
-                      width: 25,
-                      height: 25,
-                      decoration: const BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: Colors.white,
-                      ),
-                      child: Center(
-                        child: Text(
-                          _isSystemModeOn ? "A" : "M",
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.bold,
-                            color: _isSystemModeOn ? Colors.blue : Colors.grey,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
+                ),
               ),
             ),
-          ),
-        ],
+            Align(
+              alignment: _isSystemModeOn
+                  ? Alignment.centerRight
+                  : Alignment.centerLeft,
+              child: Container(
+                width: 25,
+                height: 25,
+                decoration: const BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.white,
+                ),
+                child: Center(
+                  child: Text(
+                    _isSystemModeOn ? "A" : "M",
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: _isSystemModeOn ? Colors.blue : Colors.grey,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -203,9 +194,9 @@ class _SystemTweaksState extends State<SystemTweaks> {
                   ),
                   Expanded(
                     child: _buildScrollPicker("HUMIDITY", 30, 90, _humidity,
-                            (value) {
-                          setState(() => _humidity = value);
-                        }),
+                        (value) {
+                      setState(() => _humidity = value);
+                    }),
                   ),
                 ],
               ),
@@ -251,16 +242,16 @@ class _SystemTweaksState extends State<SystemTweaks> {
                 activeColor: _lightIntensity == 0
                     ? Colors.white
                     : _lightIntensity == 1
-                    ? Colors.yellow
-                    : Colors.red,
+                        ? Colors.yellow
+                        : Colors.red,
                 inactiveColor: Colors.black26,
                 onChanged: _isSystemModeOn
                     ? null
                     : (value) {
-                  setState(() {
-                    _lightIntensity = value;
-                  });
-                },
+                        setState(() {
+                          _lightIntensity = value;
+                        });
+                      },
               ),
               const SizedBox(height: 5),
               Row(
@@ -409,7 +400,7 @@ class _SystemTweaksState extends State<SystemTweaks> {
   Widget _buildScrollPicker(
       String label, int min, int max, int value, Function(int) onChanged) {
     List<String> values = List.generate(max - min + 1,
-            (index) => "${min + index}${label == 'TEMPERATURE' ? '°C' : '%'}");
+        (index) => "${min + index}${label == 'TEMPERATURE' ? '°C' : '%'}");
 
     return IgnorePointer(
       ignoring: _isSystemModeOn,
@@ -438,7 +429,7 @@ class _SystemTweaksState extends State<SystemTweaks> {
                     ? const NeverScrollableScrollPhysics()
                     : const FixedExtentScrollPhysics(),
                 controller:
-                FixedExtentScrollController(initialItem: value - min),
+                    FixedExtentScrollController(initialItem: value - min),
                 onSelectedItemChanged: (index) =>
                     setState(() => onChanged(min + index)),
                 childDelegate: ListWheelChildBuilderDelegate(
@@ -494,7 +485,7 @@ class _SystemTweaksState extends State<SystemTweaks> {
               Navigator.pushAndRemoveUntil(
                 context,
                 MaterialPageRoute(builder: (context) => const Home()),
-                    (route) => false,
+                (route) => false,
               );
             },
           ),

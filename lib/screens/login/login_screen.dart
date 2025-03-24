@@ -42,7 +42,8 @@ class _LoginState extends State<Login> {
           children: [
             Expanded(
               child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
@@ -74,7 +75,7 @@ class _LoginState extends State<Login> {
         Image.asset(
           'assets/login/smart_lighting_icon.png',
           width: 260,
-          height: 260,
+          height: 230,
           fit: BoxFit.cover,
         ),
       ],
@@ -238,42 +239,42 @@ class _LoginState extends State<Login> {
       onPressed: _isLoading
           ? null
           : () async {
-        setState(() {
-          _emailError = null;
-          _passwordError = null;
-          _passwordHasError = false;
-        });
+              setState(() {
+                _emailError = null;
+                _passwordError = null;
+                _passwordHasError = false;
+              });
 
-        if (_emailController.text.trim().isEmpty) {
-          setState(() => _emailError = "Please enter your email.");
-          return;
-        }
+              if (_emailController.text.trim().isEmpty) {
+                setState(() => _emailError = "Please enter your email.");
+                return;
+              }
 
-        if (_passwordController.text.trim().isEmpty) {
-          setState(() {
-            _passwordError = "Please enter your password.";
-            _passwordHasError = true;
-          });
-          return;
-        }
+              if (_passwordController.text.trim().isEmpty) {
+                setState(() {
+                  _passwordError = "Please enter your password.";
+                  _passwordHasError = true;
+                });
+                return;
+              }
 
-        setState(() => _isLoading = true);
+              setState(() => _isLoading = true);
 
-        // Use AuthService to handle sign-in
-        bool success = await _authService.signin(
-          email: _emailController.text.trim(),
-          password: _passwordController.text.trim(),
-          context: context,
-        );
+              // Use AuthService to handle sign-in
+              bool success = await _authService.signin(
+                email: _emailController.text.trim(),
+                password: _passwordController.text.trim(),
+                context: context,
+              );
 
-        if (!success) {
-          setState(() {
-            _emailError = "Login failed. Please try again.";
-          });
-        }
+              if (!success) {
+                setState(() {
+                  _emailError = "Login failed. Please try again.";
+                });
+              }
 
-        setState(() => _isLoading = false);
-      },
+              setState(() => _isLoading = false);
+            },
       child: _isLoading
           ? const CircularProgressIndicator(color: Colors.white)
           : const Text("Sign In", style: TextStyle(color: Colors.white)),
