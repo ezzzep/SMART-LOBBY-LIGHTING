@@ -1,4 +1,3 @@
-// service.dart
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
@@ -322,6 +321,40 @@ class AuthService {
     } catch (e) {
       print('Unexpected error in updateEmail: $e');
       throw Exception('Failed to update email: $e');
+    }
+  }
+
+  // UPDATE PASSWORD
+  Future<void> updatePassword(String newPassword) async {
+    User? user = _auth.currentUser;
+    if (user == null) {
+      throw Exception("No user is currently signed in.");
+    }
+
+    try {
+      print('Updating password for user: ${user.email}');
+      await user.updatePassword(newPassword);
+      print('Password updated successfully');
+    } on FirebaseAuthException catch (e) {
+      String message;
+      switch (e.code) {
+        case 'weak-password':
+          message = 'The new password is too weak.';
+          break;
+        case 'requires-recent-login':
+          message = 'Please re-authenticate and try again.';
+          break;
+        case 'operation-not-allowed':
+          message = 'Password updates are restricted in this Firebase project.';
+          break;
+        default:
+          message = 'Failed to update password: ${e.message} (code: ${e.code})';
+      }
+      print('Update password error: $message');
+      throw Exception(message);
+    } catch (e) {
+      print('Unexpected error in updatePassword: $e');
+      throw Exception('Failed to update password: $e');
     }
   }
 
