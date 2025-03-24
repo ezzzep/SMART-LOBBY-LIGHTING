@@ -1,8 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:smart_lighting/services/service.dart';
-import 'package:lite_rolling_switch/lite_rolling_switch.dart';
-import 'package:smart_lighting/common/widgets/successCard/success_card.dart';
 import 'package:smart_lighting/common/widgets/systemStatus/temperatureStatus/temperature_status.dart';
 import 'package:smart_lighting/common/widgets/systemStatus/humidityStatus/humidity_status.dart';
 import 'package:smart_lighting/common/widgets/systemStatus/sensorsStatus/sensors_status.dart';
@@ -22,9 +20,9 @@ class Home extends StatefulWidget {
 }
 
 class _HomeState extends State<Home> {
-  bool isSwitchOn = false;
-  bool showSuccess = false;
   bool pirSensorActive = false;
+  double temperature = 0.0;
+  double humidity = 0.0;
   final AuthService _authService = AuthService();
   Timer? _timer;
   String? esp32IP;
@@ -56,51 +54,68 @@ class _HomeState extends State<Home> {
   }
 
   void _startPolling() {
-    _timer?.cancel(); // Cancel any existing timer
+    _timer?.cancel();
     _timer = Timer.periodic(Duration(seconds: 1), (timer) async {
       if (esp32IP == null) return;
       try {
-        final response = await http.get(Uri.parse('http://$esp32IP/pir'));
+        final response = await http.get(Uri.parse('http://$esp32IP/sensors'));
+        print('Flutter: HTTP Response Status: ${response.statusCode}');
+        print('Flutter: Raw Response: ${response.body}');
+
         if (response.statusCode == 200) {
-          setState(() {
-            pirSensorActive = true; // PIR sensor is active if we get a response
-          });
           String data = response.body.trim();
-          if (data == "MOTION DETECTED") {
-            Fluttertoast.showToast(
-              msg: "Motion Detected!",
-              toastLength: Toast.LENGTH_SHORT,
-              gravity: ToastGravity.BOTTOM,
-            );
-          }
+          _parseSensorData(data);
         } else {
           setState(() {
             pirSensorActive = false;
+            temperature = 0.0;
+            humidity = 0.0;
+            print('Flutter: Sensor Inactive - Status Code: ${response.statusCode}');
           });
         }
       } catch (e) {
         setState(() {
           pirSensorActive = false;
+          temperature = 0.0;
+          humidity = 0.0;
+          print('Flutter: Error polling ESP32: $e');
         });
       }
     });
   }
 
-  void toggleSwitchPosition(bool state) {
+  void _parseSensorData(String data) {
     setState(() {
-      isSwitchOn = state;
-      showSuccess = false;
-    });
-
-    if (state) {
-      Future.delayed(const Duration(seconds: 3), () {
-        if (mounted) {
-          setState(() {
-            showSuccess = true;
-          });
+      pirSensorActive = true;
+      if (data.startsWith("ERROR")) {
+        temperature = 0.0;
+        humidity = 0.0;
+        print('Flutter: Sensor Error');
+      } else {
+        List<String> parts = data.split(",");
+        for (String part in parts) {
+          if (part.startsWith("TEMP:")) {
+            temperature = double.tryParse(part.split(":")[1]) ?? 0.0;
+            print('Flutter: Temperature: $temperature');
+          } else if (part.startsWith("HUMID:")) {
+            humidity = double.tryParse(part.split(":")[1]) ?? 0.0;
+            print('Flutter: Humidity: $humidity');
+          } else if (part.startsWith("PIR:")) {
+            String pirStatus = part.split(":")[1];
+            if (pirStatus == "MOTION DETECTED") {
+              print('Flutter: Motion Detected!');
+              Fluttertoast.showToast(
+                msg: "Motion Detected!",
+                toastLength: Toast.LENGTH_SHORT,
+                gravity: ToastGravity.BOTTOM,
+              );
+            } else {
+              print('Flutter: PIR Status: $pirStatus');
+            }
+          }
         }
-      });
-    }
+      }
+    });
   }
 
   @override
@@ -127,34 +142,11 @@ class _HomeState extends State<Home> {
             mainAxisAlignment: MainAxisAlignment.start,
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              const TemperatureStatus(),
+              TemperatureStatus(temperature: temperature),
               const SizedBox(height: 10),
-              const HumidityStatus(),
+              HumidityStatus(humidity: humidity),
               const SizedBox(height: 10),
               _buildSensorsStatusGrid(),
-              const SizedBox(height: 20),
-              Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 500),
-                      child: showSuccess
-                          ? const SuccessCard()
-                          : const Text(
-                        "SYSTEM ACTIVATION",
-                        style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                        key: ValueKey("systemActivation"),
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    if (!showSuccess)
-                      CustomLiteRollingSwitch(
-                        onSwitchChanged: toggleSwitchPosition,
-                      ),
-                  ],
-                ),
-              ),
             ],
           ),
         ),
@@ -189,7 +181,7 @@ class _HomeState extends State<Home> {
             ),
             _buildDrawerItem(Icons.home, 'System Status', context, null),
             _buildDrawerItem(Icons.settings, 'System Tweaks', context, const SystemTweaks()),
-            _buildDrawerItem(Icons.wifi, 'Setup', context, SetupScreen()),
+            _buildDrawerItem(Icons.wifi, 'Setup', context, const SetupScreen()),
             _buildDrawerItem(Icons.account_circle, 'Account', context, null),
             const Divider(),
             ListTile(
@@ -263,43 +255,6 @@ class _HomeState extends State<Home> {
             isActive: false,
           ),
         ],
-      ),
-    );
-  }
-}
-
-class CustomLiteRollingSwitch extends StatefulWidget {
-  final Function(bool) onSwitchChanged;
-
-  const CustomLiteRollingSwitch({super.key, required this.onSwitchChanged});
-
-  @override
-  State<CustomLiteRollingSwitch> createState() => _CustomLiteRollingSwitchState();
-}
-
-class _CustomLiteRollingSwitchState extends State<CustomLiteRollingSwitch> {
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: 130,
-      height: 42,
-      child: LiteRollingSwitch(
-        value: false,
-        textOn: 'ON',
-        textOff: 'OFF',
-        colorOn: const Color(0xff0D6EFD),
-        colorOff: const Color(0xff6A6A6A),
-        textOnColor: Colors.white,
-        textOffColor: Colors.white,
-        iconOn: Icons.done,
-        iconOff: Icons.remove_circle_outline,
-        textSize: 14.0,
-        onChanged: (bool state) {
-          widget.onSwitchChanged(state);
-        },
-        onTap: () {},
-        onDoubleTap: () {},
-        onSwipe: () {},
       ),
     );
   }

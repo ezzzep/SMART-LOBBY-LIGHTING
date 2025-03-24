@@ -4,14 +4,29 @@ import 'package:flutter/material.dart';
 import 'package:smart_lighting/firebase_options.dart';
 import 'package:smart_lighting/screens/login/login_screen.dart';
 import 'package:smart_lighting/screens/dashboard/dashboard_screen.dart';
+import 'package:smart_lighting/screens/verification/verify_email_screen.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:fluttertoast/fluttertoast.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+  try {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+    print("Firebase initialized successfully");
+  } catch (e) {
+    print("Firebase initialization error: $e");
+    Fluttertoast.showToast(
+      msg: "Failed to initialize Firebase. Please check your connection.",
+      toastLength: Toast.LENGTH_LONG,
+      gravity: ToastGravity.SNACKBAR,
+      backgroundColor: Colors.black54,
+      textColor: Colors.white,
+      fontSize: 14.0,
+    );
+  }
 
   runApp(const MyApp());
 }
@@ -23,7 +38,10 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      home: AuthWrapper(),
+      home: const AuthWrapper(),
+      theme: ThemeData(
+        primarySwatch: Colors.blue,
+      ),
     );
   }
 }
@@ -43,7 +61,6 @@ class AuthWrapper extends StatelessWidget {
         final User? user = snapshot.data;
 
         if (user != null) {
-          // User is signed in, check Firestore data and email verification
           return FutureBuilder<DocumentSnapshot>(
             future: FirebaseFirestore.instance
                 .collection('users')
@@ -55,30 +72,35 @@ class AuthWrapper extends StatelessWidget {
               }
 
               if (firestoreSnapshot.hasError) {
-                // Handle Firestore errors (e.g., PERMISSION_DENIED)
                 print("Firestore error: ${firestoreSnapshot.error}");
-                return const Login(); // Redirect to Login on error
+                Fluttertoast.showToast(
+                  msg: "Error accessing user data. Please try again later.",
+                  toastLength: Toast.LENGTH_LONG,
+                  gravity: ToastGravity.SNACKBAR,
+                  backgroundColor: Colors.black54,
+                  textColor: Colors.white,
+                  fontSize: 14.0,
+                );
+                return const Login();
               }
 
               if (firestoreSnapshot.hasData && firestoreSnapshot.data!.exists) {
-                // User exists in Firestore, check email verification
                 if (user.emailVerified) {
-                  print("User ${user.email} signed in, email verified, going to Home");
+                  print("User ${user.email ?? 'unknown'} signed in, email verified, going to Home");
                   return const Home();
                 } else {
-                  print("User ${user.email} signed in, email not verified");
-                  // Uncomment and use VerifyEmailScreen if you have it
-                  // return VerifyEmailScreen(email: user.email!);
-                  return const Login(); // For now, redirect to Login
+                  print("User ${user.email ?? 'unknown'} signed in, email not verified");
+                  return user.email != null
+                      ? VerifyEmailScreen(email: user.email!)
+                      : const Login();
                 }
               } else {
                 print("User ${user.uid} signed in but no Firestore data found");
-                return const Login(); // No Firestore data, back to Login
+                return const Login();
               }
             },
           );
         } else {
-          // User is not signed in
           print("No user signed in, showing Login");
           return const Login();
         }

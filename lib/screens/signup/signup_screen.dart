@@ -1,5 +1,4 @@
 import 'package:smart_lighting/screens/login/login_screen.dart';
-// If needed
 import 'package:smart_lighting/services/service.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -16,9 +15,10 @@ class _SignupState extends State<Signup> {
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   bool _isLoading = false;
+  bool _obscurePassword = true;
   String? _emailError;
   String? _passwordError;
-  final AuthService _authService = AuthService(); // Use instance of AuthService
+  final AuthService _authService = AuthService();
 
   @override
   void dispose() {
@@ -29,7 +29,7 @@ class _SignupState extends State<Signup> {
 
   void _validateEmail(String value) {
     final emailRegex =
-        RegExp(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$');
+    RegExp(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$');
     setState(() {
       _emailError = value.isEmpty
           ? "Email is required"
@@ -178,7 +178,7 @@ class _SignupState extends State<Signup> {
         TextField(
           controller: _passwordController,
           onChanged: _validatePassword,
-          obscureText: true,
+          obscureText: _obscurePassword,
           decoration: InputDecoration(
             filled: true,
             hintText: '@Test1234',
@@ -189,11 +189,19 @@ class _SignupState extends State<Signup> {
               borderRadius: BorderRadius.circular(14),
               borderSide: BorderSide(
                 color: _passwordError == null &&
-                        _passwordController.text.isNotEmpty
+                    _passwordController.text.isNotEmpty
                     ? Colors.green
                     : (_passwordError != null ? Colors.red : Colors.grey),
                 width: 2,
               ),
+            ),
+            suffixIcon: IconButton(
+              icon: Icon(
+                _obscurePassword ? Icons.visibility : Icons.visibility_off,
+                color: Colors.grey,
+              ),
+              onPressed: () =>
+                  setState(() => _obscurePassword = !_obscurePassword),
             ),
           ),
         ),

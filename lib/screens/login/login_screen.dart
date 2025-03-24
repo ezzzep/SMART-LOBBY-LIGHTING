@@ -1,12 +1,11 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:fluttertoast/fluttertoast.dart';
+import 'package:smart_lighting/screens/ForgotPasswordScreen/forgot_password_screen.dart'; // Added
 import 'package:smart_lighting/screens/signup/signup_screen.dart';
-import 'package:smart_lighting/screens/dashboard/dashboard_screen.dart';
-import 'package:smart_lighting/common/widgets/activation/activation.dart'; // Import ActivationScreen
+import 'package:smart_lighting/services/service.dart';
 
 class Login extends StatefulWidget {
   const Login({super.key});
@@ -24,8 +23,7 @@ class _LoginState extends State<Login> {
   bool _isLoading = false;
   bool _passwordHasError = false;
 
-  final FirebaseAuth _auth = FirebaseAuth.instance;
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final AuthService _authService = AuthService();
 
   @override
   void dispose() {
@@ -44,7 +42,8 @@ class _LoginState extends State<Login> {
           children: [
             Expanded(
               child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
@@ -54,7 +53,9 @@ class _LoginState extends State<Login> {
                     _emailAddress(),
                     const SizedBox(height: 20),
                     _password(),
-                    const SizedBox(height: 50),
+                    const SizedBox(height: 10),
+                    _forgotPassword(context), // Added
+                    const SizedBox(height: 40),
                     _signin(context),
                   ],
                 ),
@@ -74,7 +75,7 @@ class _LoginState extends State<Login> {
         Image.asset(
           'assets/login/smart_lighting_icon.png',
           width: 260,
-          height: 260,
+          height: 230,
           fit: BoxFit.cover,
         ),
       ],
@@ -186,7 +187,8 @@ class _LoginState extends State<Login> {
                 _obscurePassword ? Icons.visibility : Icons.visibility_off,
                 color: Colors.grey,
               ),
-              onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+              onPressed: () =>
+                  setState(() => _obscurePassword = !_obscurePassword),
             ),
           ),
           onChanged: (_) => setState(() {
@@ -195,6 +197,32 @@ class _LoginState extends State<Login> {
           }),
         ),
       ],
+    );
+  }
+
+  Widget _forgotPassword(BuildContext context) {
+    return Align(
+      alignment: Alignment.centerRight,
+      child: TextButton(
+        onPressed: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => const ForgotPasswordScreen(),
+            ),
+          );
+        },
+        child: Text(
+          "Forgot Password?",
+          style: GoogleFonts.raleway(
+            textStyle: const TextStyle(
+              color: Color(0xff0D6EFD),
+              fontWeight: FontWeight.w500,
+              fontSize: 14,
+            ),
+          ),
+        ),
+      ),
     );
   }
 
@@ -211,93 +239,46 @@ class _LoginState extends State<Login> {
       onPressed: _isLoading
           ? null
           : () async {
-        setState(() {
-          _emailError = null;
-          _passwordError = null;
-          _passwordHasError = false;
-        });
+              setState(() {
+                _emailError = null;
+                _passwordError = null;
+                _passwordHasError = false;
+              });
 
-        if (_emailController.text.trim().isEmpty) {
-          setState(() => _emailError = "Please enter your email.");
-          return;
-        }
+              if (_emailController.text.trim().isEmpty) {
+                setState(() => _emailError = "Please enter your email.");
+                return;
+              }
 
-        if (_passwordController.text.trim().isEmpty) {
-          setState(() {
-            _passwordError = "Please enter your password.";
-            _passwordHasError = true;
-          });
-          return;
-        }
+              if (_passwordController.text.trim().isEmpty) {
+                setState(() {
+                  _passwordError = "Please enter your password.";
+                  _passwordHasError = true;
+                });
+                return;
+              }
 
-        setState(() => _isLoading = true);
+              setState(() => _isLoading = true);
 
-        try {
-          UserCredential userCredential =
-          await _auth.signInWithEmailAndPassword(
-            email: _emailController.text.trim(),
-            password: _passwordController.text.trim(),
-          );
-
-          DocumentSnapshot userDoc = await _firestore
-              .collection('users')
-              .doc(userCredential.user!.uid)
-              .get();
-
-          if (userDoc.exists) {
-            if (!mounted) return;
-            // Navigate to the Activation screen first
-            final isActivated = await Navigator.push(
-              context,
-              MaterialPageRoute(
-                  builder: (context) => const ActivationScreen()),
-            );
-
-            // After activation, navigate to Home screen
-            if (isActivated == true) {
-              Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(builder: (context) => const Home()),
+              // Use AuthService to handle sign-in
+              bool success = await _authService.signin(
+                email: _emailController.text.trim(),
+                password: _passwordController.text.trim(),
+                context: context,
               );
-            }
-          } else {
-            setState(() {
-              _emailError = "No user data found. Please sign up.";
-            });
-          }
-        } on FirebaseAuthException catch (e) {
-          print("Error code: ${e.code}");
-          _handleLoginError(e.code);
-        } catch (e) {
-          print("Unexpected error: $e");
-          setState(() {
-            _emailError = "An unexpected error occurred.";
-          });
-        } finally {
-          setState(() => _isLoading = false);
-        }
-      },
+
+              if (!success) {
+                setState(() {
+                  _emailError = "Login failed. Please try again.";
+                });
+              }
+
+              setState(() => _isLoading = false);
+            },
       child: _isLoading
           ? const CircularProgressIndicator(color: Colors.white)
           : const Text("Sign In", style: TextStyle(color: Colors.white)),
     );
-  }
-
-  void _handleLoginError(String errorCode) {
-    setState(() {
-      if (errorCode == "user-not-found") {
-        _emailError = "No account found for this email.";
-      } else if (errorCode == "wrong-password") {
-        _passwordError = "Wrong password, try again";
-        _passwordHasError = true;
-      } else if (errorCode == "invalid-email") {
-        _emailError = "Invalid email format.";
-      } else if (errorCode == "too-many-requests") {
-        _emailError = "Too many attempts. Try again later.";
-      } else {
-        _emailError = "Login failed. Please try again.";
-      }
-    });
   }
 
   Widget _signup(BuildContext context) {
