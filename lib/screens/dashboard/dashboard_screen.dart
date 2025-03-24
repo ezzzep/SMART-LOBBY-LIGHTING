@@ -1,11 +1,11 @@
+// Home.dart
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:smart_lighting/services/service.dart';
 import 'package:smart_lighting/common/widgets/systemStatus/temperatureStatus/temperature_status.dart';
 import 'package:smart_lighting/common/widgets/systemStatus/humidityStatus/humidity_status.dart';
 import 'package:smart_lighting/common/widgets/systemStatus/sensorsStatus/sensors_status.dart';
-import 'package:smart_lighting/screens/systemTweaks/system_tweaks_screen.dart';
-import 'package:smart_lighting/screens/setup/setup_screen.dart';
+import 'package:smart_lighting/common/widgets/drawer/drawer.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:fluttertoast/fluttertoast.dart';
@@ -70,7 +70,8 @@ class _HomeState extends State<Home> {
             pirSensorActive = false;
             temperature = 0.0;
             humidity = 0.0;
-            print('Flutter: Sensor Inactive - Status Code: ${response.statusCode}');
+            print(
+                'Flutter: Sensor Inactive - Status Code: ${response.statusCode}');
           });
         }
       } catch (e) {
@@ -134,7 +135,8 @@ class _HomeState extends State<Home> {
           },
         ),
       ),
-      drawer: _buildDrawer(context),
+      drawer:
+          DrawerWidget(authService: _authService), // Use the new DrawerWidget
       body: SingleChildScrollView(
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 20.0, horizontal: 10.0),
@@ -151,68 +153,6 @@ class _HomeState extends State<Home> {
           ),
         ),
       ),
-    );
-  }
-
-  Widget _buildDrawer(BuildContext context) {
-    return Container(
-      width: 270,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: const BorderRadius.horizontal(right: Radius.circular(16)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.2),
-            blurRadius: 5,
-            offset: const Offset(2, 0),
-          ),
-        ],
-      ),
-      child: Drawer(
-        child: ListView(
-          padding: EdgeInsets.zero,
-          children: [
-            const DrawerHeader(
-              decoration: BoxDecoration(color: Colors.blue),
-              child: Text(
-                'SMART LOBBY LIGHTING',
-                style: TextStyle(color: Colors.white, fontSize: 18),
-              ),
-            ),
-            _buildDrawerItem(Icons.home, 'System Status', context, null),
-            _buildDrawerItem(Icons.settings, 'System Tweaks', context, const SystemTweaks()),
-            _buildDrawerItem(Icons.wifi, 'Setup', context, const SetupScreen()),
-            _buildDrawerItem(Icons.account_circle, 'Account', context, null),
-            const Divider(),
-            ListTile(
-              leading: const Icon(Icons.logout, color: Colors.red),
-              title: const Text(
-                'Sign Out',
-                style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red),
-              ),
-              onTap: () async {
-                await _authService.signout(context: context);
-              },
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildDrawerItem(IconData icon, String title, BuildContext context, Widget? screen) {
-    return ListTile(
-      leading: Icon(icon, color: Colors.blue),
-      title: Text(title),
-      onTap: () {
-        Navigator.pop(context);
-        if (screen != null) {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => screen),
-          );
-        }
-      },
     );
   }
 

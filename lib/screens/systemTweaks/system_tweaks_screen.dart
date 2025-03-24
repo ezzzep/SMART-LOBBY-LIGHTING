@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:smart_lighting/services/service.dart';
-import 'package:smart_lighting/screens/dashboard/dashboard_screen.dart';
-import 'package:smart_lighting/screens/setup/setup_screen.dart';
+import 'package:smart_lighting/common/widgets/drawer/drawer.dart';
 
 class SystemTweaks extends StatefulWidget {
   const SystemTweaks({super.key});
@@ -18,6 +17,8 @@ class _SystemTweaksState extends State<SystemTweaks> {
   bool _isCoolerOn = false;
   bool _isPirSensorOn = true;
   bool _isSystemModeOn = false;
+
+  final AuthService _authService = AuthService();
 
   @override
   Widget build(BuildContext context) {
@@ -36,7 +37,7 @@ class _SystemTweaksState extends State<SystemTweaks> {
           },
         ),
       ),
-      drawer: _buildDrawer(context),
+      drawer: DrawerWidget(authService: _authService),
       body: SingleChildScrollView(
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 10.0),
@@ -44,7 +45,7 @@ class _SystemTweaksState extends State<SystemTweaks> {
             mainAxisSize: MainAxisSize.min,
             children: [
               _buildSystemModeRow(),
-              const SizedBox(height: 5),
+              const SizedBox(height: 10),
               _buildSensitivityThreshold(),
               _buildLightIntensitySlider(),
               const SizedBox(height: 15),
@@ -61,37 +62,13 @@ class _SystemTweaksState extends State<SystemTweaks> {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 10),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.end, // Aligns toggle to the right
+        mainAxisAlignment: MainAxisAlignment.end,
         children: [
           _buildSystemModeToggle(),
         ],
       ),
     );
   }
-
-  // Widget _buildSaveButton() {
-  //   return SizedBox(
-  //     width: 118,
-  //     height: 40,
-  //     child: ElevatedButton(
-  //       onPressed: () {},
-  //       style: ElevatedButton.styleFrom(
-  //         backgroundColor: const Color.fromARGB(255, 226, 231, 235),
-  //         shape: RoundedRectangleBorder(
-  //           borderRadius: BorderRadius.circular(20),
-  //         ),
-  //       ),
-  //       child: const Text(
-  //         'SAVE',
-  //         style: TextStyle(
-  //           fontSize: 16,
-  //           fontWeight: FontWeight.bold,
-  //           color: Colors.black38,
-  //         ),
-  //       ),
-  //     ),
-  //   );
-  // }
 
   Widget _buildSystemModeToggle() {
     return GestureDetector(
@@ -453,61 +430,6 @@ class _SystemTweaksState extends State<SystemTweaks> {
           ],
         ),
       ),
-    );
-  }
-
-  Widget _buildDrawer(BuildContext context) {
-    return Drawer(
-      child: ListView(
-        padding: EdgeInsets.zero,
-        children: [
-          const DrawerHeader(
-            decoration: BoxDecoration(color: Colors.blue),
-            child: Text(
-              'SMART LOBBY LIGHTING',
-              style: TextStyle(color: Colors.white, fontSize: 18),
-            ),
-          ),
-          _buildDrawerItem(Icons.home, 'System Status', context, const Home()),
-          _buildDrawerItem(
-              Icons.settings, 'System Tweaks', context, const SystemTweaks()),
-          _buildDrawerItem(Icons.wifi, 'Setup', context, const SetupScreen()),
-          _buildDrawerItem(Icons.account_circle, 'Account', context, null),
-          const Divider(),
-          ListTile(
-            leading: const Icon(Icons.logout, color: Colors.red),
-            title: const Text(
-              'Sign Out',
-              style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red),
-            ),
-            onTap: () async {
-              await AuthService().signout(context: context);
-              Navigator.pushAndRemoveUntil(
-                context,
-                MaterialPageRoute(builder: (context) => const Home()),
-                (route) => false,
-              );
-            },
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildDrawerItem(
-      IconData icon, String title, BuildContext context, Widget? screen) {
-    return ListTile(
-      leading: Icon(icon, color: Colors.blue),
-      title: Text(title),
-      onTap: () {
-        Navigator.pop(context);
-        if (screen != null) {
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (context) => screen),
-          );
-        }
-      },
     );
   }
 }
