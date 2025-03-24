@@ -1,9 +1,10 @@
 // drawer.dart
 import 'package:flutter/material.dart';
 import 'package:smart_lighting/services/service.dart';
-import 'package:smart_lighting/screens/dashboard/dashboard_screen.dart';
+import 'package:smart_lighting/screens/dashboard/dashboard_screen.dart'; // DashboardScreen
 import 'package:smart_lighting/screens/setup/setup_screen.dart';
 import 'package:smart_lighting/screens/systemTweaks/system_tweaks_screen.dart';
+import 'package:smart_lighting/screens/accountSettings/account_settings.dart'; // Import AccountSettings
 
 class DrawerWidget extends StatelessWidget {
   final AuthService authService;
@@ -76,7 +77,8 @@ class DrawerWidget extends StatelessWidget {
             _buildDrawerItem(
                 Icons.settings, 'System Tweaks', context, const SystemTweaks()),
             _buildDrawerItem(Icons.wifi, 'Setup', context, const SetupScreen()),
-            _buildDrawerItem(Icons.account_circle, 'Account', context, null),
+            _buildDrawerItem(Icons.account_circle, 'Account', context,
+                const AccountSettings()),
             const Divider(),
             ListTile(
               leading: const Icon(Icons.logout, color: Colors.red),
@@ -87,11 +89,7 @@ class DrawerWidget extends StatelessWidget {
               ),
               onTap: () async {
                 await authService.signout(context: context);
-                Navigator.pushAndRemoveUntil(
-                  context,
-                  MaterialPageRoute(builder: (context) => const Home()),
-                  (route) => false,
-                );
+                // No need for additional navigation here since signout handles it
               },
             ),
           ],

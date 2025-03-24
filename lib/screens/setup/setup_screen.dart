@@ -5,7 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:smart_lighting/screens/dashboard/dashboard_screen.dart';
-import 'package:smart_lighting/services/service.dart'; // For AuthService
+import 'package:smart_lighting/services/service.dart';
 import 'package:smart_lighting/common/widgets/drawer/drawer.dart';
 
 class SetupScreen extends StatefulWidget {
@@ -113,51 +113,33 @@ class _SetupScreenState extends State<SetupScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Container(
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(16),
-                  boxShadow: [
-                    BoxShadow(
-                        color: Colors.grey.shade200,
-                        blurRadius: 20,
-                        offset: const Offset(1, 2))
-                  ],
-                ),
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      isConnected
-                          ? 'You are already connected to ESP'
-                          : 'Wi-Fi Configuration',
-                      style: const TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.blue),
-                    ),
-                    const SizedBox(height: 20),
-                    if (!isConnected) ...[
-                      _buildTextField(ssidController, 'Wi-Fi SSID', Icons.wifi),
-                      const SizedBox(height: 16),
-                      _buildTextField(
-                          passwordController, 'Wi-Fi Password', Icons.lock,
-                          obscure: true),
-                    ],
-                    if (esp32IP != null) ...[
-                      const SizedBox(height: 16),
-                      Text('ESP32 IP: $esp32IP',
-                          style: const TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.blue)),
-                    ],
-                    const SizedBox(height: 20),
-                    _buildActionButton(context),
-                  ],
-                ),
+              Text(
+                isConnected
+                    ? 'You are already connected to ESP'
+                    : 'Wi-Fi Configuration',
+                style: const TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.blue),
               ),
+              const SizedBox(height: 20),
+              if (!isConnected) ...[
+                _buildTextField(ssidController, 'Wi-Fi SSID', Icons.wifi),
+                const SizedBox(height: 16),
+                _buildTextField(
+                    passwordController, 'Wi-Fi Password', Icons.lock,
+                    obscure: true),
+              ],
+              if (esp32IP != null) ...[
+                const SizedBox(height: 16),
+                Text('ESP32 IP: $esp32IP',
+                    style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.blue)),
+              ],
+              const SizedBox(height: 20),
+              _buildActionButton(context),
             ],
           ),
         ),
