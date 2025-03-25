@@ -17,6 +17,8 @@ class _SystemTweaksState extends State<SystemTweaks> {
   bool _isCoolerOn = false;
   bool _isPirSensorOn = true;
   bool _isSystemModeOn = false;
+  bool _isEditingThreshold = false;
+  bool _isEditingIntensity = false;
 
   final AuthService _authService = AuthService();
 
@@ -134,114 +136,230 @@ class _SystemTweaksState extends State<SystemTweaks> {
   }
 
   Widget _buildSensitivityThreshold() {
-    return IgnorePointer(
-      ignoring: _isSystemModeOn,
-      child: Opacity(
-        opacity: _isSystemModeOn ? 0.5 : 1.0,
-        child: Container(
-          margin: const EdgeInsets.all(10),
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              colors: [Colors.blue, Colors.yellow],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Text(
-                'SENSITIVITY THRESHOLD',
-                style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 18,
-                    color: Colors.white),
-              ),
-              const SizedBox(height: 20),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceAround,
+    return Container(
+      margin: const EdgeInsets.all(10),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Colors.blue, Colors.yellow],
+          begin: Alignment.topLeft,
+          end: Alignment.topRight,
+        ),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          IgnorePointer(
+            ignoring: _isSystemModeOn || !_isEditingThreshold,
+            child: Opacity(
+              opacity: (_isSystemModeOn || !_isEditingThreshold) ? 0.5 : 1.0,
+              child: Column(
                 children: [
-                  Expanded(
-                    child: _buildScrollPicker(
-                        "TEMPERATURE", 35, 45, _temperature, (value) {
-                      setState(() => _temperature = value);
-                    }),
+                  Transform.translate(
+                    offset: const Offset(0, 14),
+                    child: const Text(
+                      'SENSITIVITY THRESHOLD',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 18,
+                        color: Colors.white,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
                   ),
-                  Expanded(
-                    child: _buildScrollPicker("HUMIDITY", 30, 90, _humidity,
-                        (value) {
-                      setState(() => _humidity = value);
-                    }),
+                  const SizedBox(height: 25),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceAround,
+                    children: [
+                      Expanded(
+                        child: _buildScrollPicker(
+                            "TEMPERATURE", 35, 45, _temperature, (value) {
+                          setState(() => _temperature = value);
+                        }),
+                      ),
+                      Expanded(
+                        child: _buildScrollPicker("HUMIDITY", 30, 90, _humidity,
+                            (value) {
+                          setState(() => _humidity = value);
+                        }),
+                      ),
+                    ],
                   ),
                 ],
               ),
-            ],
+            ),
           ),
-        ),
+          if (!_isSystemModeOn)
+            Positioned(
+              top: 0,
+              right: 0,
+              child: IconButton(
+                onPressed: () {
+                  setState(() {
+                    if (!_isEditingThreshold) {
+                      _isEditingIntensity = false;
+                    }
+                    _isEditingThreshold = !_isEditingThreshold;
+                  });
+                },
+                icon: Icon(
+                  _isEditingThreshold ? Icons.save : Icons.edit,
+                  color: Colors.black,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildScrollPicker(
+      String label, int min, int max, int value, Function(int) onChanged) {
+    List<String> values = List.generate(max - min + 1,
+        (index) => "${min + index}${label == 'TEMPERATURE' ? '°C' : '%'}");
+
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        children: [
+          Text(label,
+              style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                  color: Colors.white)),
+          const SizedBox(height: 10),
+          Container(
+            width: 145,
+            height: 103,
+            decoration: BoxDecoration(
+              border: Border.all(color: Colors.black),
+              borderRadius: BorderRadius.circular(8),
+              color: Colors.white54,
+            ),
+            child: ListWheelScrollView.useDelegate(
+              itemExtent: 50,
+              perspective: 0.002,
+              physics: (_isSystemModeOn || !_isEditingThreshold)
+                  ? const NeverScrollableScrollPhysics()
+                  : const FixedExtentScrollPhysics(),
+              controller: FixedExtentScrollController(initialItem: value - min),
+              onSelectedItemChanged: (index) {
+                if (!_isSystemModeOn && _isEditingThreshold) {
+                  setState(() => onChanged(min + index));
+                }
+              },
+              childDelegate: ListWheelChildBuilderDelegate(
+                childCount: values.length,
+                builder: (context, index) {
+                  bool isSelected = (min + index) == value;
+                  return Center(
+                    child: Text(
+                      values[index],
+                      style: TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
+                        color: isSelected ? Colors.red : Colors.black,
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
 
   Widget _buildLightIntensitySlider() {
-    return IgnorePointer(
-      ignoring: _isSystemModeOn,
-      child: Opacity(
-        opacity: _isSystemModeOn ? 0.5 : 1.0,
-        child: Container(
-          margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              colors: [Colors.red, Colors.yellow],
-              begin: Alignment.bottomLeft,
-              end: Alignment.topRight,
-            ),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Column(
-            children: [
-              const Text(
-                'LIGHT INTENSITY',
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 18,
-                  color: Colors.white,
-                ),
-              ),
-              const SizedBox(height: 15),
-              Slider(
-                value: _lightIntensity,
-                min: 0,
-                max: 2,
-                divisions: 2,
-                activeColor: _lightIntensity == 0
-                    ? Colors.white
-                    : _lightIntensity == 1
-                        ? Colors.yellow
-                        : Colors.red,
-                inactiveColor: Colors.black26,
-                onChanged: _isSystemModeOn
-                    ? null
-                    : (value) {
-                        setState(() {
-                          _lightIntensity = value;
-                        });
-                      },
-              ),
-              const SizedBox(height: 5),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Colors.red, Colors.yellow],
+          begin: Alignment.bottomLeft,
+          end: Alignment.topRight,
+        ),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          IgnorePointer(
+            ignoring: _isSystemModeOn || !_isEditingIntensity,
+            child: Opacity(
+              opacity: (_isSystemModeOn || !_isEditingIntensity) ? 0.5 : 1.0,
+              child: Column(
                 children: [
-                  _buildLightIntensityLabel("LOW", 0, Colors.white),
-                  _buildLightIntensityLabel("MID", 1, Colors.yellow),
-                  _buildLightIntensityLabel("HIGH", 2, Colors.red),
+                  Transform.translate(
+                    offset: const Offset(0, 10),
+                    child: const Text(
+                      'LIGHT INTENSITY',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 18,
+                        color: Colors.white,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Slider(
+                    value: _lightIntensity,
+                    min: 0,
+                    max: 2,
+                    divisions: 2,
+                    activeColor: _lightIntensity == 0
+                        ? Colors.white
+                        : _lightIntensity == 1
+                            ? Colors.yellow
+                            : Colors.red,
+                    inactiveColor: Colors.black26,
+                    onChanged: (_isSystemModeOn || !_isEditingIntensity)
+                        ? null
+                        : (value) {
+                            setState(() {
+                              _lightIntensity = value;
+                            });
+                          },
+                  ),
+                  const SizedBox(height: 3),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      _buildLightIntensityLabel("LOW", 0, Colors.white),
+                      _buildLightIntensityLabel("MID", 1, Colors.yellow),
+                      _buildLightIntensityLabel("HIGH", 2, Colors.red),
+                    ],
+                  ),
                 ],
               ),
-            ],
+            ),
           ),
-        ),
+          if (!_isSystemModeOn)
+            Positioned(
+              top: 0,
+              right: 0,
+              child: IconButton(
+                onPressed: () {
+                  setState(() {
+                    if (!_isEditingIntensity) {
+                      _isEditingThreshold = false;
+                    }
+                    _isEditingIntensity = !_isEditingIntensity;
+                  });
+                },
+                icon: Icon(
+                  _isEditingIntensity ? Icons.save : Icons.edit,
+                  color: Colors.black,
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -369,65 +487,6 @@ class _SystemTweaksState extends State<SystemTweaks> {
               ),
             ],
           ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildScrollPicker(
-      String label, int min, int max, int value, Function(int) onChanged) {
-    List<String> values = List.generate(max - min + 1,
-        (index) => "${min + index}${label == 'TEMPERATURE' ? '°C' : '%'}");
-
-    return IgnorePointer(
-      ignoring: _isSystemModeOn,
-      child: Opacity(
-        opacity: _isSystemModeOn ? 0.5 : 1.0,
-        child: Column(
-          children: [
-            Text(label,
-                style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                    color: Colors.white)),
-            const SizedBox(height: 10),
-            Container(
-              width: 145,
-              height: 103,
-              decoration: BoxDecoration(
-                border: Border.all(color: Colors.black),
-                borderRadius: BorderRadius.circular(8),
-                color: Colors.white54,
-              ),
-              child: ListWheelScrollView.useDelegate(
-                itemExtent: 50,
-                perspective: 0.002,
-                physics: _isSystemModeOn
-                    ? const NeverScrollableScrollPhysics()
-                    : const FixedExtentScrollPhysics(),
-                controller:
-                    FixedExtentScrollController(initialItem: value - min),
-                onSelectedItemChanged: (index) =>
-                    setState(() => onChanged(min + index)),
-                childDelegate: ListWheelChildBuilderDelegate(
-                  childCount: values.length,
-                  builder: (context, index) {
-                    bool isSelected = (min + index) == value;
-                    return Center(
-                      child: Text(
-                        values[index],
-                        style: TextStyle(
-                          fontSize: 22,
-                          fontWeight: FontWeight.bold,
-                          color: isSelected ? Colors.red : Colors.black,
-                        ),
-                      ),
-                    );
-                  },
-                ),
-              ),
-            ),
-          ],
         ),
       ),
     );
