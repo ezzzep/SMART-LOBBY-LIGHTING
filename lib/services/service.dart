@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
@@ -6,6 +7,9 @@ import 'package:smart_lighting/screens/verification/verify_email_screen.dart';
 import 'package:smart_lighting/screens/dashboard/dashboard_screen.dart';
 import 'package:smart_lighting/common/widgets/activation/activation.dart';
 import 'package:fluttertoast/fluttertoast.dart';
+import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 
 class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
@@ -13,15 +17,13 @@ class AuthService {
 
   User? get currentUser => _auth.currentUser;
 
-  // SIGN UP with Email Verification and Firestore Storage
   Future<void> signup({
     required String email,
     required String password,
     required BuildContext context,
   }) async {
     try {
-      UserCredential userCredential =
-          await _auth.createUserWithEmailAndPassword(
+      UserCredential userCredential = await _auth.createUserWithEmailAndPassword(
         email: email,
         password: password,
       );
@@ -82,7 +84,6 @@ class AuthService {
     }
   }
 
-  // SIGN IN (Only allows verified users, updates Firestore email if changed)
   Future<bool> signin({
     required String email,
     required String password,
@@ -104,14 +105,12 @@ class AuthService {
         throw "unverified:Your email is not verified. A new verification link has been sent.";
       }
 
-      DocumentSnapshot userDoc =
-          await _firestore.collection('users').doc(user.uid).get();
+      DocumentSnapshot userDoc = await _firestore.collection('users').doc(user.uid).get();
 
       if (!userDoc.exists) {
         throw "User data not found in Firestore.";
       }
 
-      // Update Firestore email if it differs (e.g., after verifyBeforeUpdateEmail)
       String firestoreEmail = userDoc.get('email') ?? '';
       if (firestoreEmail != user.email) {
         await _firestore.collection('users').doc(user.uid).update({
@@ -128,10 +127,7 @@ class AuthService {
             context,
             MaterialPageRoute(builder: (context) => const ActivationScreen()),
           );
-          await _firestore
-              .collection('users')
-              .doc(user.uid)
-              .update({'isFirstLogin': false});
+          await _firestore.collection('users').doc(user.uid).update({'isFirstLogin': false});
         } else {
           Navigator.pushReplacement(
             context,
@@ -174,7 +170,6 @@ class AuthService {
     }
   }
 
-  // CHECK EMAIL VERIFICATION STATUS
   Future<void> checkEmailVerification(BuildContext context) async {
     User? user = _auth.currentUser;
     if (user == null) {
@@ -196,8 +191,7 @@ class AuthService {
         'isVerified': true,
       });
 
-      DocumentSnapshot userDoc =
-          await _firestore.collection('users').doc(user.uid).get();
+      DocumentSnapshot userDoc = await _firestore.collection('users').doc(user.uid).get();
 
       if (!userDoc.exists) {
         Fluttertoast.showToast(
@@ -219,10 +213,7 @@ class AuthService {
             context,
             MaterialPageRoute(builder: (context) => const ActivationScreen()),
           );
-          await _firestore
-              .collection('users')
-              .doc(user.uid)
-              .update({'isFirstLogin': false});
+          await _firestore.collection('users').doc(user.uid).update({'isFirstLogin': false});
         } else {
           Navigator.pushReplacement(
             context,
@@ -242,19 +233,17 @@ class AuthService {
     }
   }
 
-  // SIGN OUT
   Future<void> signout({required BuildContext context}) async {
     await _auth.signOut();
     if (context.mounted) {
       Navigator.pushAndRemoveUntil(
         context,
         MaterialPageRoute(builder: (context) => const Login()),
-        (route) => false,
+            (route) => false,
       );
     }
   }
 
-  // REAUTHENTICATE USER
   Future<void> reauthenticate(String password) async {
     User? user = _auth.currentUser;
     if (user == null) {
@@ -283,7 +272,6 @@ class AuthService {
     }
   }
 
-  // UPDATE EMAIL (Using verifyBeforeUpdateEmail)
   Future<void> updateEmail(String newEmail) async {
     User? user = _auth.currentUser;
     if (user == null) {
@@ -294,9 +282,7 @@ class AuthService {
       print('Current email: ${user.email}');
       print('Sending verification email to update to: $newEmail');
       await user.verifyBeforeUpdateEmail(newEmail);
-      print(
-          'Verification email sent to $newEmail. Email will update once verified.');
-      // Firestore update happens on next sign-in
+      print('Verification email sent to $newEmail. Email will update once verified.');
     } on FirebaseAuthException catch (e) {
       String message;
       switch (e.code) {
@@ -313,18 +299,13 @@ class AuthService {
           message = 'Email updates are restricted in this Firebase project.';
           break;
         default:
-          message =
-              'Failed to send verification email: ${e.message} (code: ${e.code})';
+          message = 'Failed to send verification email: ${e.message} (code: ${e.code})';
       }
       print('Update email error: $message');
       throw Exception(message);
-    } catch (e) {
-      print('Unexpected error in updateEmail: $e');
-      throw Exception('Failed to update email: $e');
     }
   }
 
-  // UPDATE PASSWORD
   Future<void> updatePassword(String newPassword) async {
     User? user = _auth.currentUser;
     if (user == null) {
@@ -352,13 +333,9 @@ class AuthService {
       }
       print('Update password error: $message');
       throw Exception(message);
-    } catch (e) {
-      print('Unexpected error in updatePassword: $e');
-      throw Exception('Failed to update password: $e');
     }
   }
 
-  // DELETE ACCOUNT
   Future<void> deleteAccount() async {
     User? user = _auth.currentUser;
     if (user == null) {
@@ -381,5 +358,469 @@ class AuthService {
       print('Delete account error: $message');
       throw Exception(message);
     }
+  }
+}
+
+
+
+class ESP32Service extends ChangeNotifier {
+  static final ESP32Service _instance = ESP32Service._internal();
+  factory ESP32Service() => _instance;
+  ESP32Service._internal() {
+    init();
+  }
+
+  String? esp32IP;
+  BluetoothDevice? esp32Device;
+  StreamSubscription<List<ScanResult>>? _subscription;
+  Timer? _pollingTimer;
+  Timer? _reconnectTimer;
+  bool _isPolling = false;
+  bool _isReconnecting = false;
+  Timer? _debounceTimer;
+
+  bool _pirSensorActive = false;
+  double _temperature = 0.0;
+  double _humidity = 0.0;
+  bool _isConnected = false;
+  bool _isSensorsOn = true;
+  bool _isAutoMode = true;
+  bool _isManualOverride = false;
+  String _lastSensorData = "";
+  int _sensorOffCount = 0;
+  static const int _sensorOffThreshold = 3;
+
+  int _tempThreshold = 37;
+  int _humidThreshold = 80;
+  bool _pirEnabled = true;
+  int _lightIntensity = 1;
+
+  bool get pirSensorActive => _pirSensorActive;
+  double get temperature => _temperature;
+  double get humidity => _humidity;
+  bool get isConnected => _isConnected;
+  bool get isReconnecting => _isReconnecting;
+  bool get isSensorsOn => _isSensorsOn;
+  bool get isAutoMode => _isAutoMode;
+  bool get isManualOverride => _isManualOverride;
+  String get lastSensorData => _lastSensorData;
+  int get tempThreshold => _tempThreshold;
+  int get humidThreshold => _humidThreshold;
+  bool get pirEnabled => _pirEnabled;
+  int get lightIntensity => _lightIntensity;
+
+  set pirSensorActive(bool value) {
+    _pirSensorActive = value;
+    _notifyWithDebounce();
+  }
+
+  set temperature(double value) {
+    _temperature = value;
+    _notifyWithDebounce();
+  }
+
+  set humidity(double value) {
+    _humidity = value;
+    _notifyWithDebounce();
+  }
+
+  set isConnected(bool value) {
+    _isConnected = value;
+    if (!value && esp32IP != null && !_isReconnecting) startReconnection();
+    _notifyWithDebounce();
+  }
+
+  set isReconnecting(bool value) {
+    _isReconnecting = value;
+    _notifyWithDebounce();
+  }
+
+  set isSensorsOn(bool value) {
+    _isSensorsOn = value;
+    _notifyWithDebounce();
+  }
+
+  set isAutoMode(bool value) {
+    _isAutoMode = value;
+    _notifyWithDebounce();
+  }
+
+  set isManualOverride(bool value) {
+    _isManualOverride = value;
+    _notifyWithDebounce();
+  }
+
+  set tempThreshold(int value) {
+    _tempThreshold = value;
+    _notifyWithDebounce();
+  }
+
+  set humidThreshold(int value) {
+    _humidThreshold = value;
+    _notifyWithDebounce();
+  }
+
+  set pirEnabled(bool value) {
+    _pirEnabled = value;
+    _notifyWithDebounce();
+  }
+
+  set lightIntensity(int value) {
+    _lightIntensity = value;
+    _notifyWithDebounce();
+  }
+
+  void _notifyWithDebounce() {
+    _debounceTimer?.cancel();
+    _debounceTimer = Timer(const Duration(milliseconds: 100), () {
+      notifyListeners();
+    });
+  }
+
+  Future<void> init() async {
+    await _loadESP32IP();
+    if (esp32IP != null && esp32IP!.isNotEmpty && !isConnected) {
+      await tryReconnect();
+      if (!isConnected) startReconnection();
+    }
+    if (isConnected) _startPolling();
+  }
+
+  Future<void> _loadESP32IP() async {
+    final prefs = await SharedPreferences.getInstance();
+    esp32IP = prefs.getString('esp32IP');
+  }
+
+  Future<void> _saveESP32IP() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('esp32IP', esp32IP ?? '');
+  }
+
+  void _startPolling() {
+    _pollingTimer?.cancel();
+    _isPolling = true;
+    _pollingTimer = Timer.periodic(const Duration(seconds: 1), (timer) async {
+      if (esp32IP == null || !_isPolling) {
+        timer.cancel();
+        _isPolling = false;
+        return;
+      }
+      try {
+        final response = await http
+            .get(Uri.parse('http://$esp32IP/sensors'))
+            .timeout(const Duration(seconds: 2));
+        if (response.statusCode == 200) {
+          if (!isConnected) {
+            isConnected = true;
+            Fluttertoast.showToast(msg: "Reconnected to ESP32");
+          }
+          String data = response.body.trim();
+          _lastSensorData = data;
+          _parseSensorData(data);
+        } else {
+          if (isConnected) {
+            isConnected = false;
+            Fluttertoast.showToast(msg: "ESP32 disconnected");
+          }
+        }
+      } catch (e) {
+        if (isConnected) {
+          isConnected = false;
+          Fluttertoast.showToast(msg: "ESP32 disconnected");
+        }
+      }
+    });
+  }
+
+  void startReconnection() {
+    if (esp32IP == null || esp32IP!.isEmpty || isConnected) return;
+
+    _reconnectTimer?.cancel();
+    isReconnecting = true;
+    _reconnectTimer = Timer.periodic(const Duration(seconds: 3), (timer) async {
+      if (isConnected || esp32IP == null) {
+        timer.cancel();
+        isReconnecting = false;
+        return;
+      }
+      try {
+        final response = await http
+            .get(Uri.parse('http://$esp32IP/sensors'))
+            .timeout(const Duration(seconds: 2));
+        if (response.statusCode == 200) {
+          isConnected = true;
+          isReconnecting = false;
+          _reconnectTimer?.cancel();
+          _startPolling();
+          Fluttertoast.showToast(msg: "Reconnected to ESP32");
+        }
+      } catch (e) {}
+    });
+  }
+
+  Future<void> tryReconnect() async {
+    if (esp32IP == null || esp32IP!.isEmpty || isConnected) return;
+
+    isReconnecting = true;
+    try {
+      final response = await http
+          .get(Uri.parse('http://$esp32IP/sensors'))
+          .timeout(const Duration(seconds: 2));
+      if (response.statusCode == 200) {
+        isConnected = true;
+        isReconnecting = false;
+        _reconnectTimer?.cancel();
+        _startPolling();
+        Fluttertoast.showToast(msg: "Connected to ESP32");
+      }
+    } catch (e) {
+      startReconnection();
+    } finally {
+      isReconnecting = false;
+    }
+  }
+
+  Future<void> forceBLEMode() async {
+    try {
+      await initBLE();
+      if (esp32Device == null) throw Exception("No ESP32 device found");
+
+      await esp32Device!.connect(timeout: const Duration(seconds: 20));
+      List<BluetoothService> services = await esp32Device!.discoverServices();
+
+      BluetoothCharacteristic? resetChar;
+      for (var service in services) {
+        for (var char in service.characteristics) {
+          if (char.uuid.toString() == "74675807-4e0f-48a3-9ee8-d571dc87896f") {
+            resetChar = char;
+            break;
+          }
+        }
+        if (resetChar != null) break;
+      }
+
+      if (resetChar == null) throw Exception("Reset characteristic not found");
+
+      await resetChar.write("RESET".codeUnits, withoutResponse: false);
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('esp32IP');
+      esp32IP = null;
+      _pollingTimer?.cancel();
+      _reconnectTimer?.cancel();
+      _isPolling = false;
+      isConnected = false;
+      isReconnecting = false;
+      pirSensorActive = false;
+      temperature = 0.0;
+      humidity = 0.0;
+      _notifyWithDebounce();
+    } catch (e) {
+      throw e;
+    } finally {
+      await esp32Device?.disconnect();
+    }
+  }
+
+  void _parseSensorData(String data) {
+    if (data.startsWith("SENSORS:OFF")) {
+      isSensorsOn = false;
+      isManualOverride = true;
+      isAutoMode = false;
+      temperature = 0.0;
+      humidity = 0.0;
+      pirSensorActive = false;
+      _sensorOffCount = 0;
+      _notifyWithDebounce();
+      return;
+    }
+
+    isSensorsOn = true;
+    List<String> parts = data.split(",");
+    bool tempFound = false;
+    bool humidFound = false;
+
+    for (String part in parts) {
+      if (part.startsWith("TEMP:")) {
+        temperature = double.tryParse(part.split(":")[1]) ?? 0.0;
+        tempFound = true;
+      } else if (part.startsWith("HUMID:")) {
+        humidity = double.tryParse(part.split(":")[1]) ?? 0.0;
+        humidFound = true;
+      } else if (part.startsWith("PIR:")) {
+        String pirStatus = part.split(":")[1];
+        pirSensorActive = pirStatus.contains("MOTION");
+      } else if (part.startsWith("MODE:")) {
+        String mode = part.split(":")[1];
+        if (mode == "MANUAL_OVERRIDE") {
+          isManualOverride = true;
+          isAutoMode = false;
+        } else {
+          isManualOverride = false;
+          isAutoMode = mode == "AUTO";
+        }
+      }
+    }
+
+    if (tempFound && humidFound && temperature == 0.0 && humidity == 0.0) {
+      _sensorOffCount++;
+      if (_sensorOffCount >= _sensorOffThreshold) {
+        isSensorsOn = false;
+        isManualOverride = true;
+        isAutoMode = false;
+        pirSensorActive = false;
+      }
+    } else if (temperature > 0.0 || humidity > 0.0) {
+      _sensorOffCount = 0;
+      if (isManualOverride) {
+        isManualOverride = false;
+        isAutoMode = true;
+      }
+    }
+    _notifyWithDebounce();
+  }
+
+  Future<void> initBLE() async {
+    await FlutterBluePlus.startScan(timeout: const Duration(seconds: 20));
+    _subscription = FlutterBluePlus.scanResults.listen((results) {
+      for (ScanResult r in results) {
+        if (r.device.name == "ESP32_PIR_Sensor") {
+          esp32Device = r.device;
+          FlutterBluePlus.stopScan();
+          _subscription?.cancel();
+          _subscription = null;
+          break;
+        }
+      }
+    });
+    await Future.delayed(const Duration(seconds: 20));
+  }
+
+  Future<void> configureWiFi(String ssid, String password) async {
+    try {
+      if (esp32Device == null) await initBLE();
+      if (esp32Device == null) throw Exception("No ESP32 device found");
+
+      await esp32Device!.connect(timeout: const Duration(seconds: 20));
+      List<BluetoothService> services = await esp32Device!.discoverServices();
+
+      BluetoothCharacteristic? configChar;
+      for (var service in services) {
+        for (var char in service.characteristics) {
+          if (char.uuid.toString() == "74675807-4e0f-48a3-9ee8-d571dc87896e") {
+            configChar = char;
+            break;
+          }
+        }
+        if (configChar != null) break;
+      }
+
+      if (configChar == null) throw Exception("Config characteristic not found");
+
+      await configChar.setNotifyValue(true);
+      String configString = "WIFI:$ssid:$password";
+      await configChar.write(configString.codeUnits, withoutResponse: false);
+
+      await Future.delayed(const Duration(seconds: 10));
+      List<int> ipBytes = await configChar.read();
+      esp32IP = String.fromCharCodes(ipBytes);
+
+      if (esp32IP == null || esp32IP!.isEmpty) throw Exception("ESP32 IP not received");
+
+      await _saveESP32IP();
+      isConnected = true;
+      isReconnecting = false;
+      _reconnectTimer?.cancel();
+      _startPolling();
+    } catch (e) {
+      throw e;
+    } finally {
+      await esp32Device?.disconnect();
+    }
+  }
+
+  Future<void> disconnect() async {
+    if (esp32IP != null) {
+      try {
+        final response = await http
+            .get(Uri.parse('http://$esp32IP/restart'))
+            .timeout(const Duration(seconds: 2));
+        if (response.statusCode == 200) Fluttertoast.showToast(msg: "ESP32 restarting...");
+      } catch (e) {}
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('esp32IP');
+      esp32IP = null;
+      _pollingTimer?.cancel();
+      _reconnectTimer?.cancel();
+      _isPolling = false;
+      isConnected = false;
+      isReconnecting = false;
+      pirSensorActive = false;
+      temperature = 0.0;
+      humidity = 0.0;
+      _notifyWithDebounce();
+    }
+  }
+
+  Future<void> sendConfigToESP32({
+    required int tempThreshold,
+    required int humidThreshold,
+    required bool pirEnabled,
+    required int lightIntensity,
+    required bool isAutoMode,
+  }) async {
+    if (esp32IP == null || !isConnected) throw Exception("ESP32 not connected");
+    if (isManualOverride) {
+      Fluttertoast.showToast(msg: "Cannot update config in Manual Override Mode");
+      return;
+    }
+
+    try {
+      final response = await http.post(
+        Uri.parse('http://$esp32IP/config'),
+        body: {
+          'tempThreshold': tempThreshold.toString(),
+          'humidThreshold': humidThreshold.toString(),
+          'pirEnabled': pirEnabled.toString(),
+          'lightIntensity': lightIntensity.toString(),
+          'isAutoMode': isAutoMode.toString(),
+        },
+      );
+
+      if (response.statusCode == 200) {
+        this.tempThreshold = tempThreshold;
+        this.humidThreshold = humidThreshold;
+        this.pirEnabled = pirEnabled;
+        this.lightIntensity = lightIntensity;
+        this.isAutoMode = isAutoMode;
+        Fluttertoast.showToast(msg: "Configuration updated on ESP32");
+      } else {
+        throw Exception('Failed to send config: ${response.statusCode}');
+      }
+    } catch (e) {
+      Fluttertoast.showToast(msg: "Failed to update configuration: $e");
+      await _syncWithESP32();
+      throw e;
+    }
+  }
+
+  Future<void> _syncWithESP32() async {
+    if (esp32IP == null || !isConnected) return;
+    try {
+      final response = await http
+          .get(Uri.parse('http://$esp32IP/sensors'))
+          .timeout(const Duration(seconds: 2));
+      if (response.statusCode == 200) _parseSensorData(response.body.trim());
+    } catch (e) {}
+  }
+
+  void dispose() {
+    _subscription?.cancel();
+    _pollingTimer?.cancel();
+    _reconnectTimer?.cancel();
+    _debounceTimer?.cancel();
+    esp32Device?.disconnect();
+    _subscription = null;
+    esp32Device = null;
+    _isPolling = false;
   }
 }

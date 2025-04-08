@@ -18,9 +18,9 @@ class _AccountSettingsState extends State<AccountSettings>
   final TextEditingController _passwordController = TextEditingController();
   final TextEditingController _newPasswordController = TextEditingController();
   final TextEditingController _confirmPasswordController =
-      TextEditingController();
+  TextEditingController();
   final TextEditingController _deletePasswordController =
-      TextEditingController();
+  TextEditingController();
   bool _isLoading = false;
   String? _errorMessage;
   bool _obscurePassword = true;
@@ -29,7 +29,6 @@ class _AccountSettingsState extends State<AccountSettings>
   bool _obscureDeletePassword = true;
   late TabController _tabController;
 
-  // Password validation flags
   bool _hasMinLength = false;
   bool _hasUppercase = false;
   bool _hasLowercase = false;
@@ -162,7 +161,7 @@ class _AccountSettingsState extends State<AccountSettings>
                   Navigator.pushAndRemoveUntil(
                     context,
                     MaterialPageRoute(builder: (context) => const Login()),
-                    (route) => false,
+                        (route) => false,
                   );
                 },
                 child: const Text('Re-Login'),
@@ -196,12 +195,10 @@ class _AccountSettingsState extends State<AccountSettings>
       final user = _authService.currentUser;
       if (user == null) throw Exception('No user logged in');
 
-      // Check if passwords match
       if (_newPasswordController.text != _confirmPasswordController.text) {
         throw Exception('New password and confirmation do not match');
       }
 
-      // Check password requirements
       if (!(_hasMinLength &&
           _hasUppercase &&
           _hasLowercase &&
@@ -229,12 +226,10 @@ class _AccountSettingsState extends State<AccountSettings>
       await _authService.updatePassword(_newPasswordController.text);
       print('Password updated successfully');
 
-      // Clear all password fields
       _passwordController.clear();
       _newPasswordController.clear();
       _confirmPasswordController.clear();
 
-      // Show success modal
       if (context.mounted) {
         await showDialog(
           context: context,
@@ -353,7 +348,6 @@ class _AccountSettingsState extends State<AccountSettings>
       body: TabBarView(
         controller: _tabController,
         children: [
-          // Email Tab
           Padding(
             padding: const EdgeInsets.all(20.0),
             child: SingleChildScrollView(
@@ -362,7 +356,7 @@ class _AccountSettingsState extends State<AccountSettings>
                 children: [
                   const Text('Update Email',
                       style:
-                          TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+                      TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 20),
                   TextField(
                     controller: _passwordController,
@@ -374,7 +368,7 @@ class _AccountSettingsState extends State<AccountSettings>
                             ? Icons.visibility
                             : Icons.visibility_off),
                         onPressed: () => setState(
-                            () => _obscurePassword = !_obscurePassword),
+                                () => _obscurePassword = !_obscurePassword),
                       ),
                     ),
                     obscureText: _obscurePassword,
@@ -406,7 +400,6 @@ class _AccountSettingsState extends State<AccountSettings>
               ),
             ),
           ),
-          // Password Tab
           Padding(
             padding: const EdgeInsets.all(20.0),
             child: SingleChildScrollView(
@@ -415,7 +408,7 @@ class _AccountSettingsState extends State<AccountSettings>
                 children: [
                   const Text('Update Password',
                       style:
-                          TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+                      TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 20),
                   TextField(
                     controller: _passwordController,
@@ -427,7 +420,7 @@ class _AccountSettingsState extends State<AccountSettings>
                             ? Icons.visibility
                             : Icons.visibility_off),
                         onPressed: () => setState(
-                            () => _obscurePassword = !_obscurePassword),
+                                () => _obscurePassword = !_obscurePassword),
                       ),
                     ),
                     obscureText: _obscurePassword,
@@ -443,7 +436,7 @@ class _AccountSettingsState extends State<AccountSettings>
                             ? Icons.visibility
                             : Icons.visibility_off),
                         onPressed: () => setState(
-                            () => _obscureNewPassword = !_obscureNewPassword),
+                                () => _obscureNewPassword = !_obscureNewPassword),
                       ),
                     ),
                     obscureText: _obscureNewPassword,
@@ -459,13 +452,12 @@ class _AccountSettingsState extends State<AccountSettings>
                             ? Icons.visibility
                             : Icons.visibility_off),
                         onPressed: () => setState(() =>
-                            _obscureConfirmPassword = !_obscureConfirmPassword),
+                        _obscureConfirmPassword = !_obscureConfirmPassword),
                       ),
                     ),
                     obscureText: _obscureConfirmPassword,
                   ),
                   const SizedBox(height: 16),
-                  // Password requirements
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -543,7 +535,7 @@ class _AccountSettingsState extends State<AccountSettings>
                             _hasSpecialChar ? '✓' : '✗',
                             style: TextStyle(
                               color:
-                                  _hasSpecialChar ? Colors.green : Colors.red,
+                              _hasSpecialChar ? Colors.green : Colors.red,
                               fontSize: 14,
                             ),
                           ),
@@ -571,7 +563,6 @@ class _AccountSettingsState extends State<AccountSettings>
               ),
             ),
           ),
-          // Delete Tab
           Padding(
             padding: const EdgeInsets.all(20.0),
             child: SingleChildScrollView(
@@ -580,7 +571,7 @@ class _AccountSettingsState extends State<AccountSettings>
                 children: [
                   const Text('Delete Your Account',
                       style:
-                          TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+                      TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 20),
                   TextField(
                     controller: _currentEmailController,
@@ -600,7 +591,7 @@ class _AccountSettingsState extends State<AccountSettings>
                             ? Icons.visibility
                             : Icons.visibility_off),
                         onPressed: () => setState(() =>
-                            _obscureDeletePassword = !_obscureDeletePassword),
+                        _obscureDeletePassword = !_obscureDeletePassword),
                       ),
                     ),
                     obscureText: _obscureDeletePassword,
