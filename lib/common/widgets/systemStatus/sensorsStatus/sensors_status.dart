@@ -6,15 +6,18 @@ class SensorsStatus extends StatelessWidget {
   final String title;
   final String subtitle;
   final bool isActive;
+  final bool isManualOverride; // Added parameter
+  final Key? key;
 
   const SensorsStatus({
-    super.key,
+    this.key,
     required this.width,
     required this.height,
     required this.title,
     required this.subtitle,
     required this.isActive,
-  });
+    required this.isManualOverride,
+  }) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
@@ -28,21 +31,20 @@ class SensorsStatus extends StatelessWidget {
           BoxShadow(
             offset: const Offset(3, 5),
             blurRadius: 12,
-            spreadRadius: 3, // Darker shadow effect
+            spreadRadius: 3,
             color: Colors.black.withOpacity(0.2),
           ),
         ],
       ),
       child: Column(
         children: [
-          // Centered content (title & subtitle)
           Expanded(
             child: Center(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
-                    title,
+                    isManualOverride ? "Manual Override" : title,
                     textAlign: TextAlign.center,
                     style: const TextStyle(
                       color: Colors.black,
@@ -52,7 +54,7 @@ class SensorsStatus extends StatelessWidget {
                   ),
                   const SizedBox(height: 5),
                   Text(
-                    subtitle,
+                    isManualOverride ? "Override Mode" : subtitle,
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       color: Colors.grey[700],
@@ -64,20 +66,18 @@ class SensorsStatus extends StatelessWidget {
               ),
             ),
           ),
-
-          // Full-width status indicator at the bottom
           Container(
             width: double.infinity,
             padding: const EdgeInsets.symmetric(vertical: 8),
             decoration: BoxDecoration(
-              color: isActive ? Colors.green : Colors.red,
+              color: isManualOverride ? Colors.orange : (isActive ? Colors.green : Colors.red),
               borderRadius: const BorderRadius.only(
                 bottomLeft: Radius.circular(12.5),
                 bottomRight: Radius.circular(12.5),
               ),
             ),
             child: Text(
-              isActive ? 'ACTIVE' : 'INACTIVE',
+              isManualOverride ? 'OVERRIDE' : (isActive ? 'ACTIVE' : 'INACTIVE'),
               textAlign: TextAlign.center,
               style: const TextStyle(
                 color: Colors.white,
