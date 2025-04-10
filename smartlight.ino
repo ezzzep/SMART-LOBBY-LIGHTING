@@ -9,27 +9,62 @@
 #include <LiquidCrystal_I2C.h>
 #include <Preferences.h>
 
-// LCD Configuration
 #define LCD_I2C_ADDRESS 0x27
 LiquidCrystal_I2C lcd(LCD_I2C_ADDRESS, 20, 4);
 bool lcdActive = false;
 
-// BLE UUIDs
 #define SERVICE_UUID "74675807-4e0f-48a3-9ee8-d571dc87896e"
 #define CONFIG_CHAR_UUID "74675807-4e0f-48a3-9ee8-d571dc87896e"
 #define RESET_CHAR_UUID "74675807-4e0f-48a3-9ee8-d571dc87896f"
 
-// AHT10 Setup - Two sensors
+#define I2C_SDA 21
+#define I2C_SCL 22
+#define PIR_1   23
+#define PIR_2   19
+#define PIR_3   18
+#define PIR_4   5
+#define PIR_5   4
+#define PIR_6   13
+#define PIR_7   14
+#define PIR_8   27
+#define PIR_9   26
+#define PIR_10  25
+#define RELAY_1 15    // Light Circuit 1 - Relay 1
+#define RELAY_2 17    // Light Circuit 1 - Relay 2
+#define RELAY_3 33    // Light Circuit 2 - Relay 3
+#define RELAY_4 32    // Light Circuit 2 - Relay 4
+#define RELAY_COOLER 16 // Cooler
+
+const int pirPins[10] = {PIR_1, PIR_2, PIR_3, PIR_4, PIR_5, PIR_6, PIR_7, PIR_8, PIR_9, PIR_10};
+int pirStates[10] = {LOW, LOW, LOW, LOW, LOW, LOW, LOW, LOW, LOW, LOW};
+unsigned long lastMotionTimes[10] = {0};
+bool pirFailed[10] = {false};
+const unsigned long PIR_FAIL_THRESHOLD = 24 * 60 * 60 * 1000; // 24 hours in ms
+
+// PIR Debouncing Variables
+const unsigned long PIR_COOLDOWN = 5000; // 5 seconds cooldown after excessive triggers
+const int PIR_TRIGGER_LIMIT = 5; // Max triggers allowed in window before cooldown
+int pirTriggerCount[10] = {0}; // Trigger count per PIR
+unsigned long lastPirTriggerWindow = 0;
+const unsigned long PIR_WINDOW = 10000; // 10-second window to count triggers
+
+// Relay Transition Delay
+const unsigned long RELAY_DELAY = 2000; // 2 seconds delay before relay state change
+int currentLightIntensity = 2; // Track current light state (default HIGH)
+bool currentCoolerState = true; // Track current cooler state (default ON)
+unsigned long lastLightChange = 0;
+unsigned long lastCoolerChange = 0;
+
 Adafruit_AHTX0 aht1;
 Adafruit_AHTX0 aht2;
-TwoWire I2CBus2 = TwoWire(1);
 
 WebServer server(80);
 Preferences prefs;
-const int pirPin = 23;
-const int relay1Pin = 0; // Assuming wiring is still on GPIO 1 and 3
-const int relay2Pin = 15;
-int pirState = LOW;
+const int relay1Pin = RELAY_1;
+const int relay2Pin = RELAY_2;
+const int relay3Pin = RELAY_3;
+const int relay4Pin = RELAY_4;
+const int relayCoolerPin = RELAY_COOLER;
 
 BLECharacteristic* pConfigCharacteristic;
 BLECharacteristic* pResetCharacteristic;
@@ -37,18 +72,19 @@ BLEAdvertising* pAdvertising;
 bool isWiFiMode = false;
 
 // Configurable thresholds and settings
-float tempThreshold = 30.0;
-float humidThreshold = 70.0;
+float tempThreshold = 32.0;
+float humidThreshold = 65.0;
 bool pirEnabled = true;
-int lightIntensity = 1;
+int lightIntensity = 2; // Default HIGH MODE
 bool isAutoMode = true;
+bool coolerEnabled = true;
+bool allowOffMode = false;
 
-// Global sensor values
 float currentTemp = 0.0;
 float currentHumid = 0.0;
 bool sensorsPowered = true;
-unsigned long invalidStartTime = 0; // Track when invalid readings begin
-bool invalidReadingsActive = false; // Flag for ongoing invalid state
+unsigned long invalidStartTime = 0;
+bool invalidReadingsActive = false;
 const unsigned long INVALID_THRESHOLD = 2000; // 2 seconds in ms
 
 void savePreferences() {
@@ -58,16 +94,20 @@ void savePreferences() {
     prefs.putBool("pirEnabled", pirEnabled);
     prefs.putInt("lightIntensity", lightIntensity);
     prefs.putBool("isAutoMode", isAutoMode);
+    prefs.putBool("coolerEnabled", coolerEnabled);
+    prefs.putBool("allowOffMode", allowOffMode);
     prefs.end();
 }
 
 void loadPreferences() {
     prefs.begin("settings", true);
-    tempThreshold = prefs.getFloat("tempThreshold", 30.0);
-    humidThreshold = prefs.getFloat("humidThreshold", 70.0);
+    tempThreshold = prefs.getFloat("tempThreshold", 32.0);
+    humidThreshold = prefs.getFloat("humidThreshold", 65.0);
     pirEnabled = prefs.getBool("pirEnabled", true);
-    lightIntensity = prefs.getInt("lightIntensity", 1);
+    lightIntensity = prefs.getInt("lightIntensity", 2);
     isAutoMode = prefs.getBool("isAutoMode", true);
+    coolerEnabled = prefs.getBool("coolerEnabled", true);
+    allowOffMode = prefs.getBool("allowOffMode", false);
     prefs.end();
 }
 
@@ -76,55 +116,78 @@ void updateDisplay(float temp, float humid, bool sensorsOn) {
         lcd.clear();
         if (sensorsOn) {
             lcd.setCursor(0, 0);
-            lcd.print("Temperature:");
+            lcd.print("Temp: "); lcd.print(temp, 1); lcd.print("C");
             lcd.setCursor(0, 1);
-            char tempStr[6];
-            snprintf(tempStr, sizeof(tempStr), "%4.1fC", temp);
-            lcd.print(tempStr);
+            lcd.print("Humid: "); lcd.print(humid, 1); lcd.print("%");
             lcd.setCursor(0, 2);
-            lcd.print("Humidity:");
+            lcd.print("PIR: "); lcd.print(getPIRStatus().substring(0, 12));
             lcd.setCursor(0, 3);
-            char humidStr[6];
-            snprintf(humidStr, sizeof(humidStr), "%4.1f%%", humid);
-            lcd.print(humidStr);
+            lcd.print("Mode: "); lcd.print(isAutoMode ? "AUTO" : "MANUAL");
         } else {
             lcd.setCursor(0, 0);
-            lcd.print("MANUAL OVERRIDE MODE");
+            lcd.print("MANUAL OVERRIDE");
             lcd.setCursor(0, 1);
             lcd.print("Lights: HIGH");
+            lcd.setCursor(0, 2);
+            lcd.print("Cooler: ON");
         }
     }
 }
 
-void setLightIntensity(int intensity) {
-    switch (intensity) {
-        case 0: // OFF
-            digitalWrite(relay1Pin, LOW);
-            digitalWrite(relay2Pin, LOW);
-            Serial.println("ESP32: Light OFF (R1: LOW, R2: LOW)");
-            break;
-        case 1: // LOW
-            digitalWrite(relay1Pin, HIGH);
-            digitalWrite(relay2Pin, LOW);
-            Serial.println("ESP32: Light LOW (R1: HIGH, R2: LOW)");
-            break;
-        case 2: // HIGH
-            digitalWrite(relay1Pin, LOW);
-            digitalWrite(relay2Pin, HIGH);
-            Serial.println("ESP32: Light HIGH (R1: LOW, R2: HIGH)");
-            break;
-        default:
-            digitalWrite(relay1Pin, LOW);
-            digitalWrite(relay2Pin, LOW);
-            Serial.println("ESP32: Invalid intensity, defaulting to OFF");
-            break;
+void setLightAndCoolerIntensity(int intensity) {
+    unsigned long currentTime = millis();
+    if (intensity != currentLightIntensity && (currentTime - lastLightChange >= RELAY_DELAY)) {
+        switch (intensity) {
+            case 0: // OFF
+                digitalWrite(relay1Pin, LOW);
+                digitalWrite(relay2Pin, LOW);
+                digitalWrite(relay3Pin, LOW);
+                digitalWrite(relay4Pin, LOW);
+                Serial.println("ESP32: Lights OFF (R1: LOW, R2: LOW, R3: LOW, R4: LOW)");
+                break;
+            case 1: // LOW
+                digitalWrite(relay1Pin, HIGH);
+                digitalWrite(relay2Pin, LOW);
+                digitalWrite(relay3Pin, HIGH);
+                digitalWrite(relay4Pin, LOW);
+                Serial.println("ESP32: Lights LOW (R1: HIGH, R2: LOW, R3: HIGH, R4: LOW)");
+                break;
+            case 2: // HIGH
+                digitalWrite(relay1Pin, LOW);
+                digitalWrite(relay2Pin, HIGH);
+                digitalWrite(relay3Pin, LOW);
+                digitalWrite(relay4Pin, HIGH);
+                Serial.println("ESP32: Lights HIGH (R1: LOW, R2: HIGH, R3: LOW, R4: HIGH)");
+                break;
+            default:
+                digitalWrite(relay1Pin, LOW);
+                digitalWrite(relay2Pin, LOW);
+                digitalWrite(relay3Pin, LOW);
+                digitalWrite(relay4Pin, LOW);
+                Serial.println("ESP32: Invalid intensity, defaulting to OFF for Lights");
+                break;
+        }
+        currentLightIntensity = intensity;
+        lastLightChange = currentTime;
+    } else if (intensity != currentLightIntensity) {
+        Serial.println("ESP32: Light change delayed due to relay protection");
+    }
+}
+
+void setCoolerState(bool state) {
+    unsigned long currentTime = millis();
+    if (state != currentCoolerState && (currentTime - lastCoolerChange >= RELAY_DELAY)) {
+        digitalWrite(relayCoolerPin, state ? HIGH : LOW);
+        Serial.println("ESP32: Cooler " + String(state ? "ON" : "OFF"));
+        currentCoolerState = state;
+        lastCoolerChange = currentTime;
+    } else if (state != currentCoolerState) {
+        Serial.println("ESP32: Cooler change delayed due to relay protection");
     }
 }
 
 void updateSensorValues() {
-    sensors_event_t humid1, temp1;
-    sensors_event_t humid2, temp2;
-
+    sensors_event_t humid1, temp1, humid2, temp2;
     bool sensor1Valid = aht1.getEvent(&humid1, &temp1);
     bool sensor2Valid = aht2.getEvent(&humid2, &temp2);
 
@@ -165,13 +228,13 @@ void updateSensorValues() {
             sensorsPowered = true;
             invalidStartTime = 0;
             invalidReadingsActive = false;
+            Serial.flush();
         }
         currentTemp = tempSum / validSensors;
         currentHumid = humidSum / validSensors;
         Serial.print("ESP32: Averaged Temp: "); Serial.print(currentTemp); Serial.println(" °C");
         Serial.print("ESP32: Averaged Humid: "); Serial.print(currentHumid); Serial.println(" %");
     } else {
-        // Both sensors returned invalid readings
         if (!invalidReadingsActive) {
             invalidReadingsActive = true;
             invalidStartTime = millis();
@@ -185,8 +248,10 @@ void updateSensorValues() {
                 sensorsPowered = false;
                 currentTemp = 0.0;
                 currentHumid = 0.0;
-                setLightIntensity(2);
+                setLightAndCoolerIntensity(2);
+                setCoolerState(true); // Cooler ON in Manual Override (lights HIGH)
                 Serial.println("ESP32: Relays set to HIGH due to sustained invalid readings");
+                Serial.flush();
             }
         }
     }
@@ -194,52 +259,128 @@ void updateSensorValues() {
 
 void handleRelayAndPIR() {
     if (!sensorsPowered) {
-        Serial.println("ESP32: Manual Override - Sensors OFF, forcing Light HIGH");
-        setLightIntensity(2);
-        pirState = LOW;
+        static bool overrideReported = false;
+        if (!overrideReported) {
+            Serial.println("ESP32: Manual Override - Sensors OFF, forcing Lights HIGH and Cooler ON");
+            overrideReported = true;
+        }
+        setLightAndCoolerIntensity(2);
+        setCoolerState(true); // Cooler ON when lights HIGH in override
+        for (int i = 0; i < 10; i++) pirStates[i] = LOW;
         return;
+    } else {
+        static bool overrideReported = true;
+        if (overrideReported) {
+            Serial.println("ESP32: Exiting Manual Override - resuming normal operation");
+            overrideReported = false;
+        }
     }
 
-    int pirVal = digitalRead(pirPin);
+    bool anyMotion = false;
+    unsigned long currentTime = millis();
+
+    if (pirEnabled) {
+        if (currentTime - lastPirTriggerWindow > PIR_WINDOW) {
+            for (int i = 0; i < 10; i++) pirTriggerCount[i] = 0;
+            lastPirTriggerWindow = currentTime;
+            Serial.println("ESP32: PIR trigger window reset");
+        }
+
+        for (int i = 0; i < 10; i++) {
+            int pirVal = digitalRead(pirPins[i]);
+            if (pirVal == HIGH) {
+                if (pirStates[i] == LOW) {
+                    pirTriggerCount[i]++;
+                    if (pirTriggerCount[i] > PIR_TRIGGER_LIMIT) {
+                        Serial.print("ESP32: Excessive motion on PIR_"); Serial.print(i + 1); Serial.println(" - entering cooldown");
+                        lastMotionTimes[i] = currentTime + PIR_COOLDOWN;
+                        pirStates[i] = HIGH;
+                    } else {
+                        Serial.print("ESP32: Motion detected on PIR_"); Serial.print(i + 1); Serial.println(isAutoMode ? " (Auto)" : " (Manual)");
+                        pirStates[i] = HIGH;
+                        lastMotionTimes[i] = currentTime;
+                        pirFailed[i] = false;
+                        anyMotion = true;
+                    }
+                }
+            } else if (pirVal == LOW && pirStates[i] == HIGH && (currentTime >= lastMotionTimes[i])) {
+                Serial.print("ESP32: No motion on PIR_"); Serial.print(i + 1); Serial.println(isAutoMode ? " (Auto)" : " (Manual)");
+                pirStates[i] = LOW;
+            } else if (pirVal == LOW && (currentTime - lastMotionTimes[i] > PIR_FAIL_THRESHOLD)) {
+                if (!pirFailed[i]) {
+                    Serial.print("ESP32: PIR_"); Serial.print(i + 1); Serial.println(" may have failed (no motion too long)");
+                    pirFailed[i] = true;
+                }
+            }
+            if (pirStates[i] == HIGH) anyMotion = true;
+        }
+    }
+
+    bool highTempOrHumid = (currentTemp > tempThreshold || currentHumid > humidThreshold);
 
     if (isAutoMode) {
-        if (pirEnabled && pirVal == HIGH) {
-            if (pirState == LOW) {
-                Serial.println("ESP32: Motion detected (Auto)");
-                pirState = HIGH;
-            }
-            if (currentTemp > tempThreshold && currentHumid > humidThreshold) {
-                setLightIntensity(2);
-            } else if (currentTemp > tempThreshold || currentHumid > humidThreshold) {
-                setLightIntensity(1);
+        int targetIntensity = 2; // Default HIGH
+        bool coolerOn = false; // Default OFF unless lights are ON
+
+        if (pirEnabled && anyMotion) {
+            if (highTempOrHumid) {
+                targetIntensity = 1; // LOW mode if temp or humid is high with motion
             } else {
-                setLightIntensity(0);
+                targetIntensity = 2; // HIGH mode if temp and humid are low with motion
             }
         } else {
-            if (pirState == HIGH) {
-                Serial.println("ESP32: No motion (Auto)");
-                pirState = LOW;
-            }
-            if (currentTemp > tempThreshold && currentHumid > humidThreshold) {
-                setLightIntensity(2);
-            } else if (currentTemp > tempThreshold || currentHumid > humidThreshold) {
-                setLightIntensity(1);
+            targetIntensity = allowOffMode ? 0 : 1; // OFF if allowed, otherwise LOW
+        }
+
+        setLightAndCoolerIntensity(targetIntensity);
+        // Cooler ON if lights are HIGH (2) or LOW (1), OFF if lights are OFF (0)
+        coolerOn = (targetIntensity == 1 || targetIntensity == 2);
+        setCoolerState(coolerOn);
+        Serial.println("ESP32: Cooler " + String(coolerOn ? "ON" : "OFF") + " (Auto: tied to light state)");
+    } else { // Manual Mode
+        bool coolerOn = coolerEnabled; // Default to switch state
+
+        if (!pirEnabled) {
+            if (highTempOrHumid) {
+                setLightAndCoolerIntensity(1); // LOW if temp or humid exceeds
             } else {
-                setLightIntensity(0);
+                setLightAndCoolerIntensity(2); // HIGH if both are below
             }
+        } else {
+            setLightAndCoolerIntensity(lightIntensity); // Follow manual setting
+            // Cooler ON if lights are HIGH or LOW and coolerEnabled is true, OFF only if coolerEnabled is false
+            coolerOn = coolerEnabled && (lightIntensity == 1 || lightIntensity == 2);
         }
-    } else {
-        setLightIntensity(lightIntensity);
-        if (pirEnabled) {
-            if (pirVal == HIGH && pirState == LOW) {
-                Serial.println("ESP32: Motion detected (Manual)");
-                pirState = HIGH;
-            } else if (pirVal == LOW && pirState == HIGH) {
-                Serial.println("ESP32: No motion (Manual)");
-                pirState = LOW;
-            }
-        }
+
+        setCoolerState(coolerOn);
+        Serial.println("ESP32: Cooler " + String(coolerOn ? "ON" : "OFF") + " (Manual: " + (coolerEnabled ? "enabled" : "disabled") + ")");
     }
+}
+
+String getPIRStatus() {
+    if (!pirEnabled) return "DISABLED";
+    String status = "";
+    for (int i = 0; i < 10; i++) {
+        status += String(i + 1) + ":" + (pirFailed[i] ? "FAILED" : (pirStates[i] == HIGH ? "MOTION" : "NO MOTION"));
+        if (i < 9) status += ",";
+    }
+    return status;
+}
+
+String getRelayStatus() {
+    int r1 = digitalRead(relay1Pin);
+    int r2 = digitalRead(relay2Pin);
+    int r3 = digitalRead(relay3Pin);
+    int r4 = digitalRead(relay4Pin);
+    if (r1 == LOW && r2 == LOW && r3 == LOW && r4 == LOW) return "OFF";
+    else if (r1 == HIGH && r2 == LOW && r3 == HIGH && r4 == LOW) return "LOW";
+    else if (r1 == LOW && r2 == HIGH && r3 == LOW && r4 == HIGH) return "HIGH";
+    else return "UNKNOWN";
+}
+
+String getCoolerStatus() {
+    int cooler = digitalRead(relayCoolerPin);
+    return coolerEnabled ? (cooler == HIGH ? "ON" : "OFF") : "DISABLED";
 }
 
 void startWiFiServer() {
@@ -247,15 +388,19 @@ void startWiFiServer() {
         String response;
         if (!sensorsPowered) {
             response = "SENSORS:OFF,MODE:MANUAL_OVERRIDE,LCD:" + String(lcdActive ? "ACTIVE" : "INACTIVE");
+            response += ",RELAYS:" + getRelayStatus();
+            response += ",COOLER:" + getCoolerStatus();
         } else {
             if (isnan(currentTemp) || isnan(currentHumid)) {
                 response = "ERROR:TEMP_HUMIDITY";
             } else {
                 response = "TEMP:" + String(currentTemp, 1) + ",HUMID:" + String(currentHumid, 1);
             }
-            response += ",PIR:" + String(pirEnabled ? (digitalRead(pirPin) == HIGH ? "MOTION" : "NO MOTION") : "DISABLED");
+            response += ",PIR:" + getPIRStatus();
             response += ",SENSORS:ON,MODE:" + String(isAutoMode ? "AUTO" : "MANUAL");
             response += ",LCD:" + String(lcdActive ? "ACTIVE" : "INACTIVE");
+            response += ",RELAYS:" + getRelayStatus();
+            response += ",COOLER:" + getCoolerStatus();
         }
         Serial.println("ESP32: Sending sensor data: " + response);
         server.send(200, "text/plain", response);
@@ -273,19 +418,26 @@ void startWiFiServer() {
     server.on("/config", HTTP_POST, []() {
         if (server.hasArg("tempThreshold") && server.hasArg("humidThreshold") &&
             server.hasArg("pirEnabled") && server.hasArg("lightIntensity") &&
-            server.hasArg("isAutoMode")) {
+            server.hasArg("isAutoMode") && server.hasArg("coolerEnabled") &&
+            server.hasArg("allowOffMode")) {
             tempThreshold = server.arg("tempThreshold").toFloat();
             humidThreshold = server.arg("humidThreshold").toFloat();
             pirEnabled = (server.arg("pirEnabled") == "true");
             lightIntensity = server.arg("lightIntensity").toInt();
             bool requestedAutoMode = (server.arg("isAutoMode") == "true");
+            coolerEnabled = (server.arg("coolerEnabled") == "true");
+            allowOffMode = (server.arg("allowOffMode") == "true");
 
-            if (lightIntensity < 0 || lightIntensity > 2) lightIntensity = 1;
+            if (lightIntensity < 0 || lightIntensity > 2) lightIntensity = 2;
             if (!sensorsPowered) {
-                setLightIntensity(2);
+                setLightAndCoolerIntensity(2);
+                setCoolerState(true); // Cooler ON in override
             } else {
                 isAutoMode = requestedAutoMode;
-                if (!isAutoMode) setLightIntensity(lightIntensity);
+                if (!isAutoMode) {
+                    setLightAndCoolerIntensity(lightIntensity);
+                    setCoolerState(coolerEnabled && (lightIntensity == 1 || lightIntensity == 2));
+                }
             }
             savePreferences();
             server.send(200, "text/plain", "Config updated");
@@ -346,23 +498,39 @@ class ResetCallbacks : public BLECharacteristicCallbacks {
 
 void setup() {
     Serial.begin(115200);
-    pinMode(pirPin, INPUT);
+    Serial.println("ESP32: Booting up...");
+
+    for (int i = 0; i < 10; i++) {
+        pinMode(pirPins[i], INPUT);
+    }
     pinMode(relay1Pin, OUTPUT);
     pinMode(relay2Pin, OUTPUT);
+    pinMode(relay3Pin, OUTPUT);
+    pinMode(relay4Pin, OUTPUT);
+    pinMode(relayCoolerPin, OUTPUT);
     digitalWrite(relay1Pin, LOW);
-    digitalWrite(relay2Pin, LOW);
+    digitalWrite(relay2Pin, HIGH); // Default HIGH for Light Circuit 1
+    digitalWrite(relay3Pin, LOW);
+    digitalWrite(relay4Pin, HIGH); // Default HIGH for Light Circuit 2
+    digitalWrite(relayCoolerPin, HIGH); // Default ON for cooler
+    currentLightIntensity = 2; // Sync initial state
+    currentCoolerState = true;
+    lastLightChange = millis();
+    lastCoolerChange = millis();
+    Serial.println("ESP32: Pins initialized");
 
     loadPreferences();
 
-    Wire.begin(21, 22);
-    if (!aht1.begin(&Wire, 0x38)) Serial.println("ESP32: AHT10 Sensor 1 not found at startup");
-    I2CBus2.begin(19, 18);
-    if (!aht2.begin(&I2CBus2, 0x38)) Serial.println("ESP32: AHT10 Sensor 2 not found at startup");
+    Wire.begin(I2C_SDA, I2C_SCL);
+    if (!aht1.begin(&Wire, 0x38)) Serial.println("ESP32: AHT10 Sensor 1 not found");
+    if (!aht2.begin(&Wire, 0x39)) Serial.println("ESP32: AHT10 Sensor 2 not found");
+    Serial.println("ESP32: I2C sensors initialized");
 
     lcd.init();
     lcd.backlight();
     Wire.beginTransmission(LCD_I2C_ADDRESS);
     lcdActive = (Wire.endTransmission() == 0);
+    Serial.println("ESP32: LCD initialized, Active: " + String(lcdActive ? "Yes" : "No"));
 
     prefs.begin("wifi", false);
     String ssid = prefs.getString("ssid", "");
@@ -378,6 +546,9 @@ void setup() {
         if (WiFi.status() == WL_CONNECTED) {
             isWiFiMode = true;
             startWiFiServer();
+            Serial.println("ESP32: WiFi connected");
+        } else {
+            Serial.println("ESP32: WiFi connection failed");
         }
     }
 
@@ -400,10 +571,15 @@ void setup() {
 
     pService->start();
     pAdvertising = BLEDevice::getAdvertising();
-    if (!isWiFiMode) pAdvertising->start();
+    if (!isWiFiMode) {
+        pAdvertising->start();
+        Serial.println("ESP32: BLE advertising started");
+    }
 
     updateSensorValues();
+    handleRelayAndPIR();
     updateDisplay(currentTemp, currentHumid, sensorsPowered);
+    Serial.println("ESP32: Setup complete");
 }
 
 void loop() {
@@ -416,7 +592,16 @@ void loop() {
         handleRelayAndPIR();
         updateDisplay(currentTemp, currentHumid, sensorsPowered);
         lastUpdate = currentTime;
+        Serial.println("ESP32: Loop running, sensorsPowered: " + String(sensorsPowered));
+        Serial.flush();
     }
 
     if (isWiFiMode) server.handleClient();
+
+    if (!Serial) {
+        Serial.println("ESP32: Serial disconnected, attempting to reinitialize...");
+        Serial.end();
+        delay(100);
+        Serial.begin(115200);
+    }
 }
