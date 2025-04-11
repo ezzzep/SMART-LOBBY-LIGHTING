@@ -361,8 +361,6 @@ class AuthService {
   }
 }
 
-
-
 class ESP32Service extends ChangeNotifier {
   static final ESP32Service _instance = ESP32Service._internal();
   factory ESP32Service() => _instance;
@@ -380,6 +378,7 @@ class ESP32Service extends ChangeNotifier {
   Timer? _debounceTimer;
 
   bool _pirSensorActive = false;
+  List<String> _pirStatuses = List.filled(10, "NO MOTION"); // Status for 10 PIRs
   double _temperature = 0.0;
   double _humidity = 0.0;
   bool _isConnected = false;
@@ -388,14 +387,19 @@ class ESP32Service extends ChangeNotifier {
   bool _isManualOverride = false;
   String _lastSensorData = "";
   int _sensorOffCount = 0;
+  String _relayStatus = "HIGH"; // Default to HIGH per new logic
+  String _coolerStatus = "ON";  // Default to ON per new logic
   static const int _sensorOffThreshold = 3;
 
-  int _tempThreshold = 37;
-  int _humidThreshold = 80;
+  int _tempThreshold = 35;  // Updated default
+  int _humidThreshold = 70; // Updated default
   bool _pirEnabled = true;
-  int _lightIntensity = 1;
+  int _lightIntensity = 2;  // Default HIGH MODE
+  bool _coolerEnabled = true;
+  bool _allowOffMode = false; // New property for allowOffMode
 
   bool get pirSensorActive => _pirSensorActive;
+  List<String> get pirStatuses => _pirStatuses;
   double get temperature => _temperature;
   double get humidity => _humidity;
   bool get isConnected => _isConnected;
@@ -404,13 +408,22 @@ class ESP32Service extends ChangeNotifier {
   bool get isAutoMode => _isAutoMode;
   bool get isManualOverride => _isManualOverride;
   String get lastSensorData => _lastSensorData;
+  String get relayStatus => _relayStatus;
+  String get coolerStatus => _coolerStatus;
   int get tempThreshold => _tempThreshold;
   int get humidThreshold => _humidThreshold;
   bool get pirEnabled => _pirEnabled;
   int get lightIntensity => _lightIntensity;
+  bool get coolerEnabled => _coolerEnabled;
+  bool get allowOffMode => _allowOffMode; // Getter for allowOffMode
 
   set pirSensorActive(bool value) {
     _pirSensorActive = value;
+    _notifyWithDebounce();
+  }
+
+  set pirStatuses(List<String> value) {
+    _pirStatuses = value;
     _notifyWithDebounce();
   }
 
@@ -450,6 +463,16 @@ class ESP32Service extends ChangeNotifier {
     _notifyWithDebounce();
   }
 
+  set relayStatus(String value) {
+    _relayStatus = value;
+    _notifyWithDebounce();
+  }
+
+  set coolerStatus(String value) {
+    _coolerStatus = value;
+    _notifyWithDebounce();
+  }
+
   set tempThreshold(int value) {
     _tempThreshold = value;
     _notifyWithDebounce();
@@ -467,6 +490,16 @@ class ESP32Service extends ChangeNotifier {
 
   set lightIntensity(int value) {
     _lightIntensity = value;
+    _notifyWithDebounce();
+  }
+
+  set coolerEnabled(bool value) {
+    _coolerEnabled = value;
+    _notifyWithDebounce();
+  }
+
+  set allowOffMode(bool value) { // Setter for allowOffMode
+    _allowOffMode = value;
     _notifyWithDebounce();
   }
 
@@ -611,8 +644,11 @@ class ESP32Service extends ChangeNotifier {
       isConnected = false;
       isReconnecting = false;
       pirSensorActive = false;
+      pirStatuses = List.filled(10, "NO MOTION");
       temperature = 0.0;
       humidity = 0.0;
+      relayStatus = "HIGH";  // Reset to HIGH
+      coolerStatus = "ON";   // Reset to ON
       _notifyWithDebounce();
     } catch (e) {
       throw e;
@@ -629,12 +665,14 @@ class ESP32Service extends ChangeNotifier {
       temperature = 0.0;
       humidity = 0.0;
       pirSensorActive = false;
+      pirStatuses = List.filled(10, "NO MOTION");
       _sensorOffCount = 0;
-      _notifyWithDebounce();
-      return;
+      relayStatus = "HIGH";  // Manual Override forces HIGH
+      coolerStatus = coolerEnabled ? "ON" : "OFF";  // Reflects coolerEnabled state
+    } else {
+      isSensorsOn = true;
     }
 
-    isSensorsOn = true;
     List<String> parts = data.split(",");
     bool tempFound = false;
     bool humidFound = false;
@@ -648,7 +686,23 @@ class ESP32Service extends ChangeNotifier {
         humidFound = true;
       } else if (part.startsWith("PIR:")) {
         String pirStatus = part.split(":")[1];
-        pirSensorActive = pirStatus.contains("MOTION");
+        if (pirStatus == "DISABLED") {
+          pirSensorActive = false;
+          pirStatuses = List.filled(10, "NO MOTION");
+        } else {
+          List<String> pirStates = pirStatus.split(",");
+          List<String> newStatuses = List.filled(10, "NO MOTION");
+          bool anyMotion = false;
+          for (int i = 0; i < pirStates.length && i < 10; i++) {
+            List<String> stateParts = pirStates[i].split(":");
+            if (stateParts.length == 2) {
+              newStatuses[i] = stateParts[1];
+              if (stateParts[1] == "MOTION") anyMotion = true;
+            }
+          }
+          pirStatuses = newStatuses;
+          pirSensorActive = anyMotion;
+        }
       } else if (part.startsWith("MODE:")) {
         String mode = part.split(":")[1];
         if (mode == "MANUAL_OVERRIDE") {
@@ -658,6 +712,10 @@ class ESP32Service extends ChangeNotifier {
           isManualOverride = false;
           isAutoMode = mode == "AUTO";
         }
+      } else if (part.startsWith("RELAYS:")) {
+        relayStatus = part.split(":")[1];
+      } else if (part.startsWith("COOLER:")) {
+        coolerStatus = part.split(":")[1];
       }
     }
 
@@ -668,10 +726,13 @@ class ESP32Service extends ChangeNotifier {
         isManualOverride = true;
         isAutoMode = false;
         pirSensorActive = false;
+        pirStatuses = List.filled(10, "NO MOTION");
+        relayStatus = "HIGH";  // Manual Override forces HIGH
+        coolerStatus = coolerEnabled ? "ON" : "OFF";
       }
     } else if (temperature > 0.0 || humidity > 0.0) {
       _sensorOffCount = 0;
-      if (isManualOverride) {
+      if (isManualOverride && relayStatus != "HIGH") {
         isManualOverride = false;
         isAutoMode = true;
       }
@@ -755,8 +816,11 @@ class ESP32Service extends ChangeNotifier {
       isConnected = false;
       isReconnecting = false;
       pirSensorActive = false;
+      pirStatuses = List.filled(10, "NO MOTION");
       temperature = 0.0;
       humidity = 0.0;
+      relayStatus = "HIGH";  // Reset to HIGH
+      coolerStatus = "ON";   // Reset to ON
       _notifyWithDebounce();
     }
   }
@@ -767,6 +831,8 @@ class ESP32Service extends ChangeNotifier {
     required bool pirEnabled,
     required int lightIntensity,
     required bool isAutoMode,
+    required bool coolerEnabled,
+    required bool allowOffMode, // Added allowOffMode parameter
   }) async {
     if (esp32IP == null || !isConnected) throw Exception("ESP32 not connected");
     if (isManualOverride) {
@@ -783,6 +849,8 @@ class ESP32Service extends ChangeNotifier {
           'pirEnabled': pirEnabled.toString(),
           'lightIntensity': lightIntensity.toString(),
           'isAutoMode': isAutoMode.toString(),
+          'coolerEnabled': coolerEnabled.toString(),
+          'allowOffMode': allowOffMode.toString(), // Send allowOffMode to ESP32
         },
       );
 
@@ -792,6 +860,8 @@ class ESP32Service extends ChangeNotifier {
         this.pirEnabled = pirEnabled;
         this.lightIntensity = lightIntensity;
         this.isAutoMode = isAutoMode;
+        this.coolerEnabled = coolerEnabled;
+        this.allowOffMode = allowOffMode; // Update local state
         Fluttertoast.showToast(msg: "Configuration updated on ESP32");
       } else {
         throw Exception('Failed to send config: ${response.statusCode}');

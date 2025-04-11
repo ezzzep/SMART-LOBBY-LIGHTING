@@ -16,6 +16,7 @@ class Home extends StatefulWidget {
 class _HomeState extends State<Home> {
   bool _hasShownLcdError = false;
   bool _hasShownSensorsOff = false;
+  bool _hasShownCoolerRecommendation = false;
 
   @override
   Widget build(BuildContext context) {
@@ -32,7 +33,7 @@ class _HomeState extends State<Home> {
       drawer: DrawerWidget(authService: AuthService()),
       body: Consumer<ESP32Service>(
         builder: (context, esp32Service, child) {
-          // Show SnackBars in a post-frame callback to avoid build-time calls
+          // Show SnackBars in a post-frame callback
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (!mounted) return;
 
@@ -60,6 +61,23 @@ class _HomeState extends State<Home> {
               _hasShownSensorsOff = true;
             } else if (esp32Service.isSensorsOn && _hasShownSensorsOff) {
               _hasShownSensorsOff = false;
+            }
+
+            // Cooler recommendation SnackBar
+            if (!esp32Service.coolerEnabled &&
+                (esp32Service.temperature > esp32Service.tempThreshold ||
+                    esp32Service.humidity > esp32Service.humidThreshold) &&
+                !_hasShownCoolerRecommendation) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text("The temperature and humidity are high, turn on the cooler"),
+                  duration: Duration(seconds: 5),
+                  backgroundColor: Colors.red,
+                ),
+              );
+              _hasShownCoolerRecommendation = true;
+            } else if (esp32Service.coolerEnabled && _hasShownCoolerRecommendation) {
+              _hasShownCoolerRecommendation = false;
             }
           });
 
@@ -117,6 +135,9 @@ class _HomeState extends State<Home> {
   }
 
   Widget _buildSensorsStatusGrid(ESP32Service esp32Service) {
+    bool isLightActive = esp32Service.relayStatus == "LOW" || esp32Service.relayStatus == "HIGH";
+    bool isCoolerActive = esp32Service.coolerStatus == "ON";
+
     return Padding(
       padding: const EdgeInsets.all(10.0),
       child: GridView.count(
@@ -145,21 +166,21 @@ class _HomeState extends State<Home> {
             isManualOverride: esp32Service.isManualOverride,
           ),
           SensorsStatus(
-            key: ValueKey('COOLER_${esp32Service.isManualOverride}'),
+            key: ValueKey('COOLER_${esp32Service.coolerStatus}_${esp32Service.isManualOverride}'),
             width: 160,
             height: 190,
             title: 'COOLER',
             subtitle: 'Fan Cooling System',
-            isActive: true, // Placeholder
+            isActive: isCoolerActive,
             isManualOverride: esp32Service.isManualOverride,
           ),
           SensorsStatus(
-            key: ValueKey('LIGHT_${esp32Service.isManualOverride}'),
+            key: ValueKey('LIGHT_${esp32Service.relayStatus}_${esp32Service.isManualOverride}'),
             width: 180,
             height: 220,
             title: 'LIGHT BULBS',
             subtitle: 'Lobby Lighting',
-            isActive: esp32Service.isManualOverride ? true : false,
+            isActive: isLightActive,
             isManualOverride: esp32Service.isManualOverride,
           ),
         ],

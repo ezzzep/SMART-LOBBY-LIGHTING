@@ -11,14 +11,17 @@ class SystemTweaks extends StatefulWidget {
 }
 
 class _SystemTweaksState extends State<SystemTweaks> with SingleTickerProviderStateMixin {
-  int _tempThreshold = 37;
-  int _humidThreshold = 80;
-  double _lightIntensity = 1;
+  int _tempThreshold = 32;
+  int _humidThreshold = 65;
+  double _lightIntensity = 2;
   bool _isPirSensorOn = true;
-  bool _isCoolerOn = false;
+  bool _isCoolerOn = true;
 
   bool _isEditingThreshold = false;
   bool _isEditingLightIntensity = false;
+
+  late FixedExtentScrollController _tempController;
+  late FixedExtentScrollController _humidController;
 
   final AuthService _authService = AuthService();
   late AnimationController _animationController;
@@ -32,6 +35,10 @@ class _SystemTweaksState extends State<SystemTweaks> with SingleTickerProviderSt
     _humidThreshold = esp32Service.humidThreshold;
     _lightIntensity = esp32Service.lightIntensity.toDouble();
     _isPirSensorOn = esp32Service.pirEnabled;
+    _isCoolerOn = esp32Service.coolerEnabled;
+
+    _tempController = FixedExtentScrollController(initialItem: _tempThreshold - 30);
+    _humidController = FixedExtentScrollController(initialItem: _humidThreshold - 60);
 
     _animationController = AnimationController(
       vsync: this,
@@ -41,10 +48,14 @@ class _SystemTweaksState extends State<SystemTweaks> with SingleTickerProviderSt
       CurvedAnimation(parent: _animationController, curve: Curves.easeInOut),
     );
     _animationController.forward();
+
+    esp32Service.addListener(() => _checkCoolerRecommendation(esp32Service));
   }
 
   @override
   void dispose() {
+    _tempController.dispose();
+    _humidController.dispose();
     _animationController.dispose();
     super.dispose();
   }
@@ -57,10 +68,24 @@ class _SystemTweaksState extends State<SystemTweaks> with SingleTickerProviderSt
         pirEnabled: _isPirSensorOn,
         lightIntensity: _lightIntensity.toInt(),
         isAutoMode: esp32Service.isAutoMode,
+        coolerEnabled: _isCoolerOn,
+        allowOffMode: false,
       );
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Failed to save config: $e'), backgroundColor: Colors.red),
+      );
+    }
+  }
+
+  void _checkCoolerRecommendation(ESP32Service esp32Service) {
+    if (!esp32Service.coolerEnabled && esp32Service.lastSensorData.contains("COOLER_RECOMMEND:ON")) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Temperature and humidity are high, turn on the cooler"),
+          backgroundColor: Colors.orange,
+          duration: Duration(seconds: 5),
+        ),
       );
     }
   }
@@ -127,6 +152,12 @@ class _SystemTweaksState extends State<SystemTweaks> with SingleTickerProviderSt
           if (newMode) {
             _isEditingThreshold = false;
             _isEditingLightIntensity = false;
+            _isPirSensorOn = true;
+            _isCoolerOn = true;
+            _tempThreshold = esp32Service.tempThreshold;
+            _humidThreshold = esp32Service.humidThreshold;
+            _tempController.jumpToItem(_tempThreshold - 30);
+            _humidController.jumpToItem(_humidThreshold - 60);
           }
           _animationController.forward(from: 0.0);
         });
@@ -220,18 +251,20 @@ class _SystemTweaksState extends State<SystemTweaks> with SingleTickerProviderSt
                             children: [
                               _buildScrollPicker(
                                 label: "TEMPERATURE",
-                                min: 35,
-                                max: 45,
+                                min: 30,
+                                max: 40,
                                 value: _tempThreshold,
                                 suffix: '°C',
+                                controller: _tempController,
                                 onValueChanged: (value) => setState(() => _tempThreshold = value),
                               ),
                               _buildScrollPicker(
                                 label: "HUMIDITY",
-                                min: 30,
-                                max: 90,
+                                min: 60,
+                                max: 80,
                                 value: _humidThreshold,
                                 suffix: '%',
+                                controller: _humidController,
                                 onValueChanged: (value) => setState(() => _humidThreshold = value),
                               ),
                             ],
@@ -257,6 +290,7 @@ class _SystemTweaksState extends State<SystemTweaks> with SingleTickerProviderSt
     required int max,
     required int value,
     required String suffix,
+    required FixedExtentScrollController controller,
     required Function(int) onValueChanged,
   }) {
     return Column(
@@ -271,7 +305,7 @@ class _SystemTweaksState extends State<SystemTweaks> with SingleTickerProviderSt
             itemExtent: 40,
             perspective: 0.002,
             physics: const FixedExtentScrollPhysics(),
-            controller: FixedExtentScrollController(initialItem: value - min),
+            controller: controller,
             onSelectedItemChanged: (index) => onValueChanged(min + index),
             childDelegate: ListWheelChildBuilderDelegate(
               childCount: max - min + 1,
@@ -341,7 +375,7 @@ class _SystemTweaksState extends State<SystemTweaks> with SingleTickerProviderSt
                           Transform.translate(
                             offset: const Offset(0, 10),
                             child: const Text(
-                              'LIGHT INTENSITY',
+                              'LIGHT CIRCUITS INTENSITY',
                               style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.white),
                               textAlign: TextAlign.center,
                             ),
@@ -354,7 +388,9 @@ class _SystemTweaksState extends State<SystemTweaks> with SingleTickerProviderSt
                             divisions: 2,
                             activeColor: _lightIntensity == 0 ? Colors.white : _lightIntensity == 1 ? Colors.yellow : Colors.red,
                             inactiveColor: Colors.black26,
-                            onChanged: esp32Service.isAutoMode || esp32Service.isManualOverride || !_isEditingLightIntensity ? null : (value) => setState(() => _lightIntensity = value),
+                            onChanged: esp32Service.isAutoMode || esp32Service.isManualOverride || !_isEditingLightIntensity
+                                ? null
+                                : (value) => setState(() => _lightIntensity = value),
                           ),
                           const SizedBox(height: 3),
                           Row(
@@ -416,8 +452,11 @@ class _SystemTweaksState extends State<SystemTweaks> with SingleTickerProviderSt
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
-                _buildToggleBox("COOLER", _isCoolerOn, (value) {
-                  if (!esp32Service.isAutoMode && !esp32Service.isManualOverride) setState(() => _isCoolerOn = value);
+                _buildToggleBox("COOLER", _isCoolerOn, (value) async {
+                  if (!esp32Service.isAutoMode && !esp32Service.isManualOverride) {
+                    setState(() => _isCoolerOn = value);
+                    await _sendConfigToESP32(esp32Service);
+                  }
                 }, esp32Service),
                 _buildToggleBox("PIR SENSOR", _isPirSensorOn, (value) async {
                   if (!esp32Service.isAutoMode && !esp32Service.isManualOverride) {
@@ -434,6 +473,7 @@ class _SystemTweaksState extends State<SystemTweaks> with SingleTickerProviderSt
   }
 
   Widget _buildToggleBox(String label, bool value, Function(bool) onChanged, ESP32Service esp32Service) {
+    bool isEditable = !esp32Service.isManualOverride && !esp32Service.isAutoMode;
     return Container(
       width: 165,
       height: 140,
@@ -446,10 +486,14 @@ class _SystemTweaksState extends State<SystemTweaks> with SingleTickerProviderSt
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Text(label, textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+          Text(
+            label,
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+          ),
           const SizedBox(height: 15),
           GestureDetector(
-            onTap: () => onChanged(!value),
+            onTap: isEditable ? () => onChanged(!value) : null,
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 200),
               width: 100,
@@ -475,8 +519,8 @@ class _SystemTweaksState extends State<SystemTweaks> with SingleTickerProviderSt
                   Align(
                     alignment: value ? Alignment.centerRight : Alignment.centerLeft,
                     child: Container(
-                      width: 30,
-                      height: 30,
+                      width: 25,
+                      height: 25,
                       decoration: const BoxDecoration(shape: BoxShape.circle, color: Colors.white),
                       child: Center(
                         child: Text(
@@ -492,10 +536,11 @@ class _SystemTweaksState extends State<SystemTweaks> with SingleTickerProviderSt
           ),
           const SizedBox(height: 10),
           Opacity(
-            opacity: (esp32Service.isAutoMode || esp32Service.isManualOverride) ? 0.5 : 1.0,
+            opacity: !isEditable ? 0.5 : 1.0,
             child: Text(
               esp32Service.isManualOverride ? "Manual Override" : (esp32Service.isAutoMode ? "Controlled by Auto" : ""),
               style: const TextStyle(fontSize: 12, color: Colors.grey),
+              textAlign: TextAlign.center,
             ),
           ),
         ],
