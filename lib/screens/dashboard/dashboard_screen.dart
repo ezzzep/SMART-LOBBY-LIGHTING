@@ -1,123 +1,22 @@
-// Home.dart
-import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:smart_lighting/services/service.dart';
 import 'package:smart_lighting/common/widgets/systemStatus/temperatureStatus/temperature_status.dart';
 import 'package:smart_lighting/common/widgets/systemStatus/humidityStatus/humidity_status.dart';
 import 'package:smart_lighting/common/widgets/systemStatus/sensorsStatus/sensors_status.dart';
 import 'package:smart_lighting/common/widgets/drawer/drawer.dart';
-import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
-import 'package:fluttertoast/fluttertoast.dart';
+import 'package:provider/provider.dart';
 
 class Home extends StatefulWidget {
-  final String? esp32IP;
-
-  const Home({super.key, this.esp32IP});
+  const Home({super.key});
 
   @override
-  State<Home> createState() => _HomeState();
+  _HomeState createState() => _HomeState();
 }
 
 class _HomeState extends State<Home> {
-  bool pirSensorActive = false;
-  double temperature = 0.0;
-  double humidity = 0.0;
-  final AuthService _authService = AuthService();
-  Timer? _timer;
-  String? esp32IP;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadESP32IP();
-    if (widget.esp32IP != null) {
-      esp32IP = widget.esp32IP;
-      _startPolling();
-    }
-  }
-
-  @override
-  void dispose() {
-    _timer?.cancel();
-    super.dispose();
-  }
-
-  Future<void> _loadESP32IP() async {
-    final prefs = await SharedPreferences.getInstance();
-    setState(() {
-      esp32IP = prefs.getString('esp32IP') ?? widget.esp32IP;
-    });
-    if (esp32IP != null && esp32IP!.isNotEmpty) {
-      _startPolling();
-    }
-  }
-
-  void _startPolling() {
-    _timer?.cancel();
-    _timer = Timer.periodic(Duration(seconds: 1), (timer) async {
-      if (esp32IP == null) return;
-      try {
-        final response = await http.get(Uri.parse('http://$esp32IP/sensors'));
-        print('Flutter: HTTP Response Status: ${response.statusCode}');
-        print('Flutter: Raw Response: ${response.body}');
-
-        if (response.statusCode == 200) {
-          String data = response.body.trim();
-          _parseSensorData(data);
-        } else {
-          setState(() {
-            pirSensorActive = false;
-            temperature = 0.0;
-            humidity = 0.0;
-            print(
-                'Flutter: Sensor Inactive - Status Code: ${response.statusCode}');
-          });
-        }
-      } catch (e) {
-        setState(() {
-          pirSensorActive = false;
-          temperature = 0.0;
-          humidity = 0.0;
-          print('Flutter: Error polling ESP32: $e');
-        });
-      }
-    });
-  }
-
-  void _parseSensorData(String data) {
-    setState(() {
-      pirSensorActive = true;
-      if (data.startsWith("ERROR")) {
-        temperature = 0.0;
-        humidity = 0.0;
-        print('Flutter: Sensor Error');
-      } else {
-        List<String> parts = data.split(",");
-        for (String part in parts) {
-          if (part.startsWith("TEMP:")) {
-            temperature = double.tryParse(part.split(":")[1]) ?? 0.0;
-            print('Flutter: Temperature: $temperature');
-          } else if (part.startsWith("HUMID:")) {
-            humidity = double.tryParse(part.split(":")[1]) ?? 0.0;
-            print('Flutter: Humidity: $humidity');
-          } else if (part.startsWith("PIR:")) {
-            String pirStatus = part.split(":")[1];
-            if (pirStatus == "MOTION DETECTED") {
-              print('Flutter: Motion Detected!');
-              Fluttertoast.showToast(
-                msg: "Motion Detected!",
-                toastLength: Toast.LENGTH_SHORT,
-                gravity: ToastGravity.BOTTOM,
-              );
-            } else {
-              print('Flutter: PIR Status: $pirStatus');
-            }
-          }
-        }
-      }
-    });
-  }
+  bool _hasShownLcdError = false;
+  bool _hasShownSensorsOff = false;
+  bool _hasShownCoolerRecommendation = false;
 
   @override
   Widget build(BuildContext context) {
@@ -125,38 +24,120 @@ class _HomeState extends State<Home> {
       appBar: AppBar(
         title: const Text("System Status"),
         leading: Builder(
-          builder: (context) {
-            return IconButton(
-              icon: const Icon(Icons.menu),
-              onPressed: () {
-                Scaffold.of(context).openDrawer();
-              },
-            );
-          },
-        ),
-      ),
-      drawer:
-          DrawerWidget(authService: _authService), // Use the new DrawerWidget
-      body: SingleChildScrollView(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 20.0, horizontal: 10.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.start,
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              TemperatureStatus(temperature: temperature),
-              const SizedBox(height: 10),
-              HumidityStatus(humidity: humidity),
-              const SizedBox(height: 10),
-              _buildSensorsStatusGrid(),
-            ],
+          builder: (context) => IconButton(
+            icon: const Icon(Icons.menu),
+            onPressed: () => Scaffold.of(context).openDrawer(),
           ),
         ),
+      ),
+      drawer: DrawerWidget(authService: AuthService()),
+      body: Consumer<ESP32Service>(
+        builder: (context, esp32Service, child) {
+          // Show SnackBars in a post-frame callback
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) return;
+
+            if (esp32Service.lastSensorData.contains("LCD:INACTIVE") && !_hasShownLcdError) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text("LCD I2C is not connected or active"),
+                  duration: Duration(seconds: 5),
+                  backgroundColor: Colors.red,
+                ),
+              );
+              _hasShownLcdError = true;
+            } else if (esp32Service.lastSensorData.contains("LCD:ACTIVE") && _hasShownLcdError) {
+              _hasShownLcdError = false;
+            }
+
+            if (!esp32Service.isSensorsOn && !_hasShownSensorsOff) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text("Sensors powered off - Manual Override"),
+                  duration: Duration(seconds: 5),
+                  backgroundColor: Colors.orange,
+                ),
+              );
+              _hasShownSensorsOff = true;
+            } else if (esp32Service.isSensorsOn && _hasShownSensorsOff) {
+              _hasShownSensorsOff = false;
+            }
+
+            // Cooler recommendation SnackBar
+            if (!esp32Service.coolerEnabled &&
+                (esp32Service.temperature > esp32Service.tempThreshold ||
+                    esp32Service.humidity > esp32Service.humidThreshold) &&
+                !_hasShownCoolerRecommendation) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text("The temperature and humidity are high, turn on the cooler"),
+                  duration: Duration(seconds: 5),
+                  backgroundColor: Colors.red,
+                ),
+              );
+              _hasShownCoolerRecommendation = true;
+            } else if (esp32Service.coolerEnabled && _hasShownCoolerRecommendation) {
+              _hasShownCoolerRecommendation = false;
+            }
+          });
+
+          if (esp32Service.isReconnecting) {
+            return const Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(height: 16),
+                  Text("Reconnecting to ESP32...", style: TextStyle(fontSize: 18, color: Colors.grey)),
+                ],
+              ),
+            );
+          } else if (!esp32Service.isConnected) {
+            return const Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.wifi_off, size: 48, color: Colors.grey),
+                  SizedBox(height: 16),
+                  Text("Disconnected from ESP32", style: TextStyle(fontSize: 18, color: Colors.grey)),
+                ],
+              ),
+            );
+          }
+
+          return SingleChildScrollView(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 20.0, horizontal: 10.0),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  TemperatureStatus(
+                    temperature: esp32Service.temperature,
+                    isActive: esp32Service.isSensorsOn,
+                    isManualOverride: esp32Service.isManualOverride,
+                  ),
+                  const SizedBox(height: 10),
+                  HumidityStatus(
+                    humidity: esp32Service.humidity,
+                    isActive: esp32Service.isSensorsOn,
+                    isManualOverride: esp32Service.isManualOverride,
+                  ),
+                  const SizedBox(height: 10),
+                  _buildSensorsStatusGrid(esp32Service),
+                ],
+              ),
+            ),
+          );
+        },
       ),
     );
   }
 
-  Widget _buildSensorsStatusGrid() {
+  Widget _buildSensorsStatusGrid(ESP32Service esp32Service) {
+    bool isLightActive = esp32Service.relayStatus == "LOW" || esp32Service.relayStatus == "HIGH";
+    bool isCoolerActive = esp32Service.coolerStatus == "ON";
+
     return Padding(
       padding: const EdgeInsets.all(10.0),
       child: GridView.count(
@@ -166,33 +147,41 @@ class _HomeState extends State<Home> {
         crossAxisSpacing: 10,
         mainAxisSpacing: 10,
         children: [
-          const SensorsStatus(
+          SensorsStatus(
+            key: ValueKey('AHT10_${esp32Service.isSensorsOn}_${esp32Service.isManualOverride}'),
             width: 150,
             height: 180,
-            title: 'BME280',
+            title: 'AHT10',
             subtitle: 'Temp and Humidity',
-            isActive: true,
+            isActive: esp32Service.isSensorsOn,
+            isManualOverride: esp32Service.isManualOverride,
           ),
           SensorsStatus(
+            key: ValueKey('PIR_${esp32Service.isSensorsOn}_${esp32Service.pirEnabled}_${esp32Service.isManualOverride}'),
             width: 170,
             height: 200,
             title: 'PIR SENSORS',
             subtitle: 'Motion Detection',
-            isActive: pirSensorActive,
+            isActive: esp32Service.isSensorsOn && esp32Service.pirEnabled,
+            isManualOverride: esp32Service.isManualOverride,
           ),
-          const SensorsStatus(
+          SensorsStatus(
+            key: ValueKey('COOLER_${esp32Service.coolerStatus}_${esp32Service.isManualOverride}'),
             width: 160,
             height: 190,
             title: 'COOLER',
             subtitle: 'Fan Cooling System',
-            isActive: true,
+            isActive: isCoolerActive,
+            isManualOverride: esp32Service.isManualOverride,
           ),
-          const SensorsStatus(
+          SensorsStatus(
+            key: ValueKey('LIGHT_${esp32Service.relayStatus}_${esp32Service.isManualOverride}'),
             width: 180,
             height: 220,
             title: 'LIGHT BULBS',
             subtitle: 'Lobby Lighting',
-            isActive: false,
+            isActive: isLightActive,
+            isManualOverride: esp32Service.isManualOverride,
           ),
         ],
       ),

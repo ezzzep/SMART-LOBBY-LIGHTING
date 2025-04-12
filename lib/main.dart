@@ -7,6 +7,8 @@ import 'package:smart_lighting/screens/dashboard/dashboard_screen.dart';
 import 'package:smart_lighting/screens/verification/verify_email_screen.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:fluttertoast/fluttertoast.dart';
+import 'package:smart_lighting/services/service.dart';
+import 'package:provider/provider.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -36,11 +38,18 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      home: const AuthWrapper(),
-      theme: ThemeData(
-        primarySwatch: Colors.blue,
+    return ChangeNotifierProvider(
+      create: (_) {
+        final esp32Service = ESP32Service();
+        esp32Service.init(); // Initialize the service
+        return esp32Service;
+      },
+      child: MaterialApp(
+        debugShowCheckedModeBanner: false,
+        home: const AuthWrapper(),
+        theme: ThemeData(
+          primarySwatch: Colors.blue,
+        ),
       ),
     );
   }

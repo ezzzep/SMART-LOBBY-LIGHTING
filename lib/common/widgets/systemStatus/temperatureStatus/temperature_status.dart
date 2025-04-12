@@ -4,8 +4,15 @@ import 'package:vector_math/vector_math_64.dart' as math;
 
 class TemperatureStatus extends StatefulWidget {
   final double temperature;
+  final bool isActive;
+  final bool isManualOverride;
 
-  const TemperatureStatus({super.key, required this.temperature});
+  const TemperatureStatus({
+    super.key,
+    required this.temperature,
+    required this.isActive,
+    required this.isManualOverride,
+  });
 
   @override
   State<TemperatureStatus> createState() => _TemperatureStatusState();
@@ -18,7 +25,7 @@ class _TemperatureStatusState extends State<TemperatureStatus>
   final Duration fadeInDuration = const Duration(milliseconds: 500);
   final Duration fillDuration = const Duration(seconds: 2);
   double progressDegrees = 0;
-  double previousTemperature = 0; // Track the previous temperature
+  double previousTemperature = 0;
   bool isFetchingData = true;
 
   @override
@@ -27,29 +34,29 @@ class _TemperatureStatusState extends State<TemperatureStatus>
     _radialProgressAnimationController =
         AnimationController(vsync: this, duration: fillDuration);
 
-    _startAnimation(widget.temperature);
+    _startAnimation(widget.temperature, widget.isActive, widget.isManualOverride);
     _radialProgressAnimationController.forward();
   }
 
   @override
   void didUpdateWidget(TemperatureStatus oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.temperature != widget.temperature) {
-      // Instead of resetting, animate from the current progress to the new value
+    if (oldWidget.temperature != widget.temperature ||
+        oldWidget.isActive != widget.isActive ||
+        oldWidget.isManualOverride != widget.isManualOverride) {
       previousTemperature = oldWidget.temperature;
-      _startAnimation(widget.temperature);
+      _startAnimation(widget.temperature, widget.isActive, widget.isManualOverride);
       _radialProgressAnimationController.forward(from: 0.0);
     }
   }
 
-  void _startAnimation(double temperature) {
+  void _startAnimation(double temperature, bool isActive, bool isManualOverride) {
     setState(() {
-      isFetchingData = temperature == 0.0;
+      isFetchingData = !isActive || temperature <= 0.0;
     });
 
-    // Calculate the target progress based on the new temperature
-    double targetProgress = (temperature / 50) * 360;
-    double startProgress = (previousTemperature / 50) * 360; // Start from previous value
+    double targetProgress = (isActive && !isManualOverride) ? (temperature / 50) * 360 : 0;
+    double startProgress = (previousTemperature / 50) * 360;
 
     _progressAnimation = Tween(begin: startProgress, end: targetProgress)
         .animate(CurvedAnimation(
@@ -72,8 +79,8 @@ class _TemperatureStatusState extends State<TemperatureStatus>
     return DateFormat('MMMM d, yyyy').format(now);
   }
 
-  Color getCircleColor(double temperature) {
-    if (temperature <= 0.0) return Colors.grey;
+  Color getCircleColor(double temperature, bool isActive, bool isManualOverride) {
+    if (!isActive || isManualOverride || temperature <= 0.0) return Colors.grey;
     if (temperature <= 25) {
       return Colors.blue;
     } else if (temperature <= 30) {
@@ -94,8 +101,10 @@ class _TemperatureStatusState extends State<TemperatureStatus>
         height: 130,
         padding: const EdgeInsets.symmetric(horizontal: 20),
         decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            colors: [Colors.red, Colors.yellow],
+          gradient: LinearGradient(
+            colors: widget.isActive && !widget.isManualOverride
+                ? [Colors.red, Colors.yellow]
+                : [Colors.grey[400]!, Colors.grey[600]!],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
@@ -108,9 +117,9 @@ class _TemperatureStatusState extends State<TemperatureStatus>
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Text(
-                  "Temperature",
-                  style: TextStyle(
+                Text(
+                  widget.isManualOverride ? "Manual Override" : "Temperature",
+                  style: const TextStyle(
                       color: Colors.white,
                       fontSize: 22,
                       fontWeight: FontWeight.bold),
@@ -130,19 +139,24 @@ class _TemperatureStatusState extends State<TemperatureStatus>
               children: [
                 CustomPaint(
                   painter: RadialPainter(
-                      progressDegrees, getCircleColor(widget.temperature)),
+                      progressDegrees,
+                      getCircleColor(widget.temperature, widget.isActive, widget.isManualOverride)),
                   child: Container(
                     height: 90,
                     width: 90,
                   ),
                 ),
                 AnimatedOpacity(
-                  opacity: isFetchingData || progressDegrees > 5 ? 1.0 : 0.0,
+                  opacity: progressDegrees > 5 || !widget.isActive || widget.isManualOverride ? 1.0 : 0.0,
                   duration: fadeInDuration,
                   child: Text(
-                    isFetchingData
+                    widget.isManualOverride
+                        ? "Override"
+                        : widget.isActive
+                        ? (isFetchingData
                         ? "Fetching..."
-                        : "${widget.temperature.toStringAsFixed(1)}°C",
+                        : "${widget.temperature.toStringAsFixed(1)}°C")
+                        : "OFF",
                     style: const TextStyle(
                         color: Colors.black,
                         fontSize: 15,
