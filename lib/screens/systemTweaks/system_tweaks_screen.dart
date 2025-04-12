@@ -11,11 +11,12 @@ class SystemTweaks extends StatefulWidget {
 }
 
 class _SystemTweaksState extends State<SystemTweaks> with SingleTickerProviderStateMixin {
-  int _tempThreshold = 32;
-  int _humidThreshold = 65;
+  int _tempThreshold = 32; // Aligned with ESP32 default
+  int _humidThreshold = 65; // Aligned with ESP32 default
   double _lightIntensity = 2;
   bool _isPirSensorOn = true;
   bool _isCoolerOn = true;
+  bool _allowOffMode = false; // Added to match ESP32
 
   bool _isEditingThreshold = false;
   bool _isEditingLightIntensity = false;
@@ -36,6 +37,7 @@ class _SystemTweaksState extends State<SystemTweaks> with SingleTickerProviderSt
     _lightIntensity = esp32Service.lightIntensity.toDouble();
     _isPirSensorOn = esp32Service.pirEnabled;
     _isCoolerOn = esp32Service.coolerEnabled;
+    _allowOffMode = esp32Service.allowOffMode;
 
     _tempController = FixedExtentScrollController(initialItem: _tempThreshold - 30);
     _humidController = FixedExtentScrollController(initialItem: _humidThreshold - 60);
@@ -69,7 +71,7 @@ class _SystemTweaksState extends State<SystemTweaks> with SingleTickerProviderSt
         lightIntensity: _lightIntensity.toInt(),
         isAutoMode: esp32Service.isAutoMode,
         coolerEnabled: _isCoolerOn,
-        allowOffMode: false,
+        allowOffMode: _allowOffMode,
       );
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -79,7 +81,7 @@ class _SystemTweaksState extends State<SystemTweaks> with SingleTickerProviderSt
   }
 
   void _checkCoolerRecommendation(ESP32Service esp32Service) {
-    if (!esp32Service.coolerEnabled && esp32Service.lastSensorData.contains("COOLER_RECOMMEND:ON")) {
+    if (!esp32Service.coolerEnabled && (esp32Service.temperature > esp32Service.tempThreshold || esp32Service.humidity > esp32Service.humidThreshold)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text("Temperature and humidity are high, turn on the cooler"),
@@ -154,6 +156,7 @@ class _SystemTweaksState extends State<SystemTweaks> with SingleTickerProviderSt
             _isEditingLightIntensity = false;
             _isPirSensorOn = true;
             _isCoolerOn = true;
+            _allowOffMode = false;
             _tempThreshold = esp32Service.tempThreshold;
             _humidThreshold = esp32Service.humidThreshold;
             _tempController.jumpToItem(_tempThreshold - 30);

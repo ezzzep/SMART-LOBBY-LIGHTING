@@ -24,26 +24,21 @@ bool lcdActive = false;
 #define PIR_3   18
 #define PIR_4   5
 #define PIR_5   4
-#define PIR_6   13
-#define PIR_7   14
-#define PIR_8   27
-#define PIR_9   26
-#define PIR_10  25
 #define RELAY_1 15    // Light Circuit 1 - Relay 1
 #define RELAY_2 17    // Light Circuit 1 - Relay 2
 #define RELAY_3 33    // Light Circuit 2 - Relay 3
 #define RELAY_4 32    // Light Circuit 2 - Relay 4
 #define RELAY_COOLER 16 // Cooler
 
-const int pirPins[10] = {PIR_1, PIR_2, PIR_3, PIR_4, PIR_5, PIR_6, PIR_7, PIR_8, PIR_9, PIR_10};
-int pirStates[10] = {LOW, LOW, LOW, LOW, LOW, LOW, LOW, LOW, LOW, LOW};
-unsigned long lastMotionTimes[10] = {0};
-bool pirFailed[10] = {false};
+const int pirPins[5] = {PIR_1, PIR_2, PIR_3, PIR_4, PIR_5};
+int pirStates[5] = {LOW, LOW, LOW, LOW, LOW};
+unsigned long lastMotionTimes[5] = {0};
+bool pirFailed[5] = {false};
 const unsigned long PIR_FAIL_THRESHOLD = 24 * 60 * 60 * 1000; // 24 hours in ms
 
 const unsigned long PIR_COOLDOWN = 5000;
 const int PIR_TRIGGER_LIMIT = 5;
-int pirTriggerCount[10] = {0};
+int pirTriggerCount[5] = {0};
 unsigned long lastPirTriggerWindow = 0;
 const unsigned long PIR_WINDOW = 10000;
 
@@ -263,7 +258,7 @@ void handleRelayAndPIR() {
         }
         setLightAndCoolerIntensity(2);
         setCoolerState(true);
-        for (int i = 0; i < 10; i++) pirStates[i] = LOW;
+        for (int i = 0; i < 5; i++) pirStates[i] = LOW;
         return;
     } else {
         static bool overrideReported = true;
@@ -278,12 +273,12 @@ void handleRelayAndPIR() {
 
     if (pirEnabled) {
         if (currentTime - lastPirTriggerWindow > PIR_WINDOW) {
-            for (int i = 0; i < 10; i++) pirTriggerCount[i] = 0;
+            for (int i = 0; i < 5; i++) pirTriggerCount[i] = 0;
             lastPirTriggerWindow = currentTime;
             Serial.println("ESP32: PIR trigger window reset");
         }
 
-        for (int i = 0; i < 10; i++) {
+        for (int i = 0; i < 5; i++) {
             int pirVal = digitalRead(pirPins[i]);
             if (pirVal == HIGH) {
                 if (pirStates[i] == LOW) {
@@ -355,9 +350,9 @@ void handleRelayAndPIR() {
 String getPIRStatus() {
     if (!pirEnabled) return "DISABLED";
     String status = "";
-    for (int i = 0; i < 10; i++) {
+    for (int i = 0; i < 5; i++) {
         status += String(i + 1) + ":" + (pirFailed[i] ? "FAILED" : (pirStates[i] == HIGH ? "MOTION" : "NO MOTION"));
-        if (i < 9) status += ",";
+        if (i < 4) status += ",";
     }
     return status;
 }
@@ -494,14 +489,14 @@ class ResetCallbacks : public BLECharacteristicCallbacks {
 void switchToBLEMode() {
     Serial.println("ESP32: Switching to BLE mode...");
     WiFi.disconnect();
-    delay(500); // Give WiFi time to disconnect
+    delay(500);
     prefs.begin("wifi", false);
-    prefs.clear(); // Clear WiFi credentials to prevent reconnection
+    prefs.clear();
     prefs.end();
     isWiFiMode = false;
     server.close();
-    delay(500); // Ensure server is fully stopped
-    pAdvertising->start(); // Start BLE advertising unconditionally
+    delay(500);
+    pAdvertising->start();
     Serial.println("ESP32: BLE advertising restarted");
     Serial.println("ESP32: Now in BLE mode, WiFi disabled");
 }
@@ -523,7 +518,7 @@ void setup() {
     Serial.begin(115200);
     Serial.println("ESP32: Booting up...");
 
-    for (int i = 0; i < 10; i++) {
+    for (int i = 0; i < 5; i++) {
         pinMode(pirPins[i], INPUT);
     }
     pinMode(relay1Pin, OUTPUT);
