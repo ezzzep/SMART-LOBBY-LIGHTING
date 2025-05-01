@@ -10,7 +10,8 @@ class SystemTweaks extends StatefulWidget {
   _SystemTweaksState createState() => _SystemTweaksState();
 }
 
-class _SystemTweaksState extends State<SystemTweaks> with SingleTickerProviderStateMixin {
+class _SystemTweaksState extends State<SystemTweaks>
+    with SingleTickerProviderStateMixin {
   int _tempThreshold = 32; // Aligned with ESP32 default
   int _humidThreshold = 65; // Aligned with ESP32 default
   double _lightIntensity = 2;
@@ -39,8 +40,10 @@ class _SystemTweaksState extends State<SystemTweaks> with SingleTickerProviderSt
     _isCoolerOn = esp32Service.coolerEnabled;
     _allowOffMode = esp32Service.allowOffMode;
 
-    _tempController = FixedExtentScrollController(initialItem: _tempThreshold - 30);
-    _humidController = FixedExtentScrollController(initialItem: _humidThreshold - 60);
+    _tempController =
+        FixedExtentScrollController(initialItem: _tempThreshold - 30);
+    _humidController =
+        FixedExtentScrollController(initialItem: _humidThreshold - 60);
 
     _animationController = AnimationController(
       vsync: this,
@@ -75,16 +78,21 @@ class _SystemTweaksState extends State<SystemTweaks> with SingleTickerProviderSt
       );
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to save config: $e'), backgroundColor: Colors.red),
+        SnackBar(
+            content: Text('Failed to save config: $e'),
+            backgroundColor: Colors.red),
       );
     }
   }
 
   void _checkCoolerRecommendation(ESP32Service esp32Service) {
-    if (!esp32Service.coolerEnabled && (esp32Service.temperature > esp32Service.tempThreshold || esp32Service.humidity > esp32Service.humidThreshold)) {
+    if (!esp32Service.coolerEnabled &&
+        (esp32Service.temperature > esp32Service.tempThreshold ||
+            esp32Service.humidity > esp32Service.humidThreshold)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text("Temperature and humidity are high, turn on the cooler"),
+          content:
+              Text("Temperature and humidity are high, turn on the cooler"),
           backgroundColor: Colors.orange,
           duration: Duration(seconds: 5),
         ),
@@ -144,7 +152,9 @@ class _SystemTweaksState extends State<SystemTweaks> with SingleTickerProviderSt
       onTap: () async {
         if (esp32Service.isManualOverride) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Cannot change mode in Manual Override'), backgroundColor: Colors.orange),
+            const SnackBar(
+                content: Text('Cannot change mode in Manual Override'),
+                backgroundColor: Colors.orange),
           );
           return;
         }
@@ -172,35 +182,53 @@ class _SystemTweaksState extends State<SystemTweaks> with SingleTickerProviderSt
         height: 40,
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(20),
-          color: esp32Service.isManualOverride ? Colors.orange : (esp32Service.isAutoMode ? Colors.blue : Colors.grey),
+          color: esp32Service.isManualOverride
+              ? Colors.orange
+              : (esp32Service.isAutoMode ? Colors.blue : Colors.grey),
         ),
         padding: const EdgeInsets.symmetric(horizontal: 5),
         child: Stack(
           alignment: Alignment.center,
           children: [
             Align(
-              alignment: esp32Service.isAutoMode ? Alignment.centerLeft : Alignment.centerRight,
+              alignment: esp32Service.isAutoMode
+                  ? Alignment.centerLeft
+                  : Alignment.centerRight,
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 10),
                 child: Text(
-                  esp32Service.isManualOverride ? "OVERRIDE" : (esp32Service.isAutoMode ? "AUTO" : "MANUAL"),
-                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
+                  esp32Service.isManualOverride
+                      ? "OVERRIDE"
+                      : (esp32Service.isAutoMode ? "AUTO" : "MANUAL"),
+                  style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16),
                 ),
               ),
             ),
             Align(
-              alignment: esp32Service.isAutoMode ? Alignment.centerRight : Alignment.centerLeft,
+              alignment: esp32Service.isAutoMode
+                  ? Alignment.centerRight
+                  : Alignment.centerLeft,
               child: Container(
                 width: 25,
                 height: 25,
-                decoration: const BoxDecoration(shape: BoxShape.circle, color: Colors.white),
+                decoration: const BoxDecoration(
+                    shape: BoxShape.circle, color: Colors.white),
                 child: Center(
                   child: Text(
-                    esp32Service.isManualOverride ? "O" : (esp32Service.isAutoMode ? "A" : "M"),
+                    esp32Service.isManualOverride
+                        ? "O"
+                        : (esp32Service.isAutoMode ? "A" : "M"),
                     style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.bold,
-                      color: esp32Service.isManualOverride ? Colors.orange : (esp32Service.isAutoMode ? Colors.blue : Colors.grey),
+                      color: esp32Service.isManualOverride
+                          ? Colors.orange
+                          : (esp32Service.isAutoMode
+                              ? Color.fromRGBO(83, 166, 234, 1)
+                              : Colors.grey),
                     ),
                   ),
                 ),
@@ -235,16 +263,25 @@ class _SystemTweaksState extends State<SystemTweaks> with SingleTickerProviderSt
                 alignment: Alignment.center,
                 children: [
                   IgnorePointer(
-                    ignoring: esp32Service.isAutoMode || esp32Service.isManualOverride || !_isEditingThreshold,
+                    ignoring: esp32Service.isAutoMode ||
+                        esp32Service.isManualOverride ||
+                        !_isEditingThreshold,
                     child: Opacity(
-                      opacity: (esp32Service.isAutoMode || esp32Service.isManualOverride || !_isEditingThreshold) ? 0.5 : 1.0,
+                      opacity: (esp32Service.isAutoMode ||
+                              esp32Service.isManualOverride ||
+                              !_isEditingThreshold)
+                          ? 0.5
+                          : 1.0,
                       child: Column(
                         children: [
                           Transform.translate(
                             offset: const Offset(0, 14),
                             child: const Text(
                               'SENSITIVITY THRESHOLD',
-                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.white),
+                              style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 18,
+                                  color: Colors.white),
                               textAlign: TextAlign.center,
                             ),
                           ),
@@ -259,7 +296,8 @@ class _SystemTweaksState extends State<SystemTweaks> with SingleTickerProviderSt
                                 value: _tempThreshold,
                                 suffix: '°C',
                                 controller: _tempController,
-                                onValueChanged: (value) => setState(() => _tempThreshold = value),
+                                onValueChanged: (value) =>
+                                    setState(() => _tempThreshold = value),
                               ),
                               _buildScrollPicker(
                                 label: "HUMIDITY",
@@ -268,7 +306,8 @@ class _SystemTweaksState extends State<SystemTweaks> with SingleTickerProviderSt
                                 value: _humidThreshold,
                                 suffix: '%',
                                 controller: _humidController,
-                                onValueChanged: (value) => setState(() => _humidThreshold = value),
+                                onValueChanged: (value) =>
+                                    setState(() => _humidThreshold = value),
                               ),
                             ],
                           ),
@@ -276,8 +315,12 @@ class _SystemTweaksState extends State<SystemTweaks> with SingleTickerProviderSt
                       ),
                     ),
                   ),
-                  if (!esp32Service.isAutoMode && !esp32Service.isManualOverride)
-                    Positioned(top: 0, right: 0, child: _buildThresholdButton(esp32Service)),
+                  if (!esp32Service.isAutoMode &&
+                      !esp32Service.isManualOverride)
+                    Positioned(
+                        top: 0,
+                        right: 0,
+                        child: _buildThresholdButton(esp32Service)),
                 ],
               ),
             ),
@@ -298,12 +341,19 @@ class _SystemTweaksState extends State<SystemTweaks> with SingleTickerProviderSt
   }) {
     return Column(
       children: [
-        Text(label, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.white)),
+        Text(label,
+            style: const TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 16,
+                color: Colors.white)),
         const SizedBox(height: 10),
         Container(
           width: 120,
           height: 103,
-          decoration: BoxDecoration(border: Border.all(color: Colors.black), borderRadius: BorderRadius.circular(8), color: Colors.white54),
+          decoration: BoxDecoration(
+              border: Border.all(color: Colors.black),
+              borderRadius: BorderRadius.circular(8),
+              color: Colors.white54),
           child: ListWheelScrollView.useDelegate(
             itemExtent: 40,
             perspective: 0.002,
@@ -317,11 +367,15 @@ class _SystemTweaksState extends State<SystemTweaks> with SingleTickerProviderSt
                 return AnimatedContainer(
                   duration: const Duration(milliseconds: 200),
                   curve: Curves.easeOut,
-                  transform: Matrix4.translationValues(isSelected ? 0 : (index < value - min ? -5 : 5), 0, 0),
+                  transform: Matrix4.translationValues(
+                      isSelected ? 0 : (index < value - min ? -5 : 5), 0, 0),
                   child: Center(
                     child: Text(
                       '${min + index}$suffix',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: isSelected ? Colors.red : Colors.black),
+                      style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: isSelected ? Colors.red : Colors.black),
                     ),
                   ),
                 );
@@ -346,7 +400,8 @@ class _SystemTweaksState extends State<SystemTweaks> with SingleTickerProviderSt
           });
           if (!_isEditingThreshold) await _sendConfigToESP32(esp32Service);
         },
-        icon: Icon(_isEditingThreshold ? Icons.save : Icons.edit, color: Colors.black),
+        icon: Icon(_isEditingThreshold ? Icons.save : Icons.edit,
+            color: Colors.black),
       ),
     );
   }
@@ -363,23 +418,35 @@ class _SystemTweaksState extends State<SystemTweaks> with SingleTickerProviderSt
               margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
-                gradient: const LinearGradient(colors: [Colors.red, Colors.yellow], begin: Alignment.bottomLeft, end: Alignment.topRight),
+                gradient: const LinearGradient(
+                    colors: [Colors.red, Colors.yellow],
+                    begin: Alignment.bottomLeft,
+                    end: Alignment.topRight),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Stack(
                 alignment: Alignment.center,
                 children: [
                   IgnorePointer(
-                    ignoring: esp32Service.isAutoMode || esp32Service.isManualOverride || !_isEditingLightIntensity,
+                    ignoring: esp32Service.isAutoMode ||
+                        esp32Service.isManualOverride ||
+                        !_isEditingLightIntensity,
                     child: Opacity(
-                      opacity: (esp32Service.isAutoMode || esp32Service.isManualOverride || !_isEditingLightIntensity) ? 0.5 : 1.0,
+                      opacity: (esp32Service.isAutoMode ||
+                              esp32Service.isManualOverride ||
+                              !_isEditingLightIntensity)
+                          ? 0.5
+                          : 1.0,
                       child: Column(
                         children: [
                           Transform.translate(
                             offset: const Offset(0, 10),
                             child: const Text(
                               'LIGHT CIRCUITS INTENSITY',
-                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.white),
+                              style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 18,
+                                  color: Colors.white),
                               textAlign: TextAlign.center,
                             ),
                           ),
@@ -389,18 +456,26 @@ class _SystemTweaksState extends State<SystemTweaks> with SingleTickerProviderSt
                             min: 0,
                             max: 2,
                             divisions: 2,
-                            activeColor: _lightIntensity == 0 ? Colors.white : _lightIntensity == 1 ? Colors.yellow : Colors.red,
+                            activeColor: _lightIntensity == 0
+                                ? Colors.white
+                                : _lightIntensity == 1
+                                    ? Colors.yellow
+                                    : Colors.red,
                             inactiveColor: Colors.black26,
-                            onChanged: esp32Service.isAutoMode || esp32Service.isManualOverride || !_isEditingLightIntensity
+                            onChanged: esp32Service.isAutoMode ||
+                                    esp32Service.isManualOverride ||
+                                    !_isEditingLightIntensity
                                 ? null
-                                : (value) => setState(() => _lightIntensity = value),
+                                : (value) =>
+                                    setState(() => _lightIntensity = value),
                           ),
                           const SizedBox(height: 3),
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
                               _buildLightIntensityLabel("OFF", 0, Colors.white),
-                              _buildLightIntensityLabel("LOW", 1, Colors.yellow),
+                              _buildLightIntensityLabel(
+                                  "LOW", 1, Colors.yellow),
                               _buildLightIntensityLabel("HIGH", 2, Colors.red),
                             ],
                           ),
@@ -408,23 +483,31 @@ class _SystemTweaksState extends State<SystemTweaks> with SingleTickerProviderSt
                       ),
                     ),
                   ),
-                  if (!esp32Service.isAutoMode && !esp32Service.isManualOverride)
+                  if (!esp32Service.isAutoMode &&
+                      !esp32Service.isManualOverride)
                     Positioned(
                       top: 0,
                       right: 0,
                       child: AnimatedContainer(
                         duration: const Duration(milliseconds: 600),
                         curve: Curves.easeInOut,
-                        transform: Matrix4.identity()..scale(_isEditingLightIntensity ? 1.0 : 1.1),
+                        transform: Matrix4.identity()
+                          ..scale(_isEditingLightIntensity ? 1.0 : 1.1),
                         child: IconButton(
                           onPressed: () async {
                             setState(() {
-                              _isEditingLightIntensity = !_isEditingLightIntensity;
+                              _isEditingLightIntensity =
+                                  !_isEditingLightIntensity;
                               _animationController.forward(from: 0.0);
                             });
-                            if (!_isEditingLightIntensity) await _sendConfigToESP32(esp32Service);
+                            if (!_isEditingLightIntensity)
+                              await _sendConfigToESP32(esp32Service);
                           },
-                          icon: Icon(_isEditingLightIntensity ? Icons.save : Icons.edit, color: Colors.black),
+                          icon: Icon(
+                              _isEditingLightIntensity
+                                  ? Icons.save
+                                  : Icons.edit,
+                              color: Colors.black),
                         ),
                       ),
                     ),
@@ -440,7 +523,10 @@ class _SystemTweaksState extends State<SystemTweaks> with SingleTickerProviderSt
   Widget _buildLightIntensityLabel(String text, double value, Color color) {
     return Text(
       text,
-      style: TextStyle(color: _lightIntensity == value ? color : Colors.white70, fontSize: 16, fontWeight: FontWeight.bold),
+      style: TextStyle(
+          color: _lightIntensity == value ? color : Colors.white70,
+          fontSize: 16,
+          fontWeight: FontWeight.bold),
     );
   }
 
@@ -456,13 +542,15 @@ class _SystemTweaksState extends State<SystemTweaks> with SingleTickerProviderSt
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
                 _buildToggleBox("COOLER", _isCoolerOn, (value) async {
-                  if (!esp32Service.isAutoMode && !esp32Service.isManualOverride) {
+                  if (!esp32Service.isAutoMode &&
+                      !esp32Service.isManualOverride) {
                     setState(() => _isCoolerOn = value);
                     await _sendConfigToESP32(esp32Service);
                   }
                 }, esp32Service),
                 _buildToggleBox("PIR SENSOR", _isPirSensorOn, (value) async {
-                  if (!esp32Service.isAutoMode && !esp32Service.isManualOverride) {
+                  if (!esp32Service.isAutoMode &&
+                      !esp32Service.isManualOverride) {
                     setState(() => _isPirSensorOn = value);
                     await _sendConfigToESP32(esp32Service);
                   }
@@ -475,8 +563,10 @@ class _SystemTweaksState extends State<SystemTweaks> with SingleTickerProviderSt
     );
   }
 
-  Widget _buildToggleBox(String label, bool value, Function(bool) onChanged, ESP32Service esp32Service) {
-    bool isEditable = !esp32Service.isManualOverride && !esp32Service.isAutoMode;
+  Widget _buildToggleBox(String label, bool value, Function(bool) onChanged,
+      ESP32Service esp32Service) {
+    bool isEditable =
+        !esp32Service.isManualOverride && !esp32Service.isAutoMode;
     return Container(
       width: 165,
       height: 140,
@@ -484,7 +574,9 @@ class _SystemTweaksState extends State<SystemTweaks> with SingleTickerProviderSt
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(8),
         color: Colors.white,
-        boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 1, spreadRadius: 1)],
+        boxShadow: [
+          BoxShadow(color: Colors.black26, blurRadius: 1, spreadRadius: 1)
+        ],
       ),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -510,25 +602,34 @@ class _SystemTweaksState extends State<SystemTweaks> with SingleTickerProviderSt
                 alignment: Alignment.center,
                 children: [
                   Align(
-                    alignment: value ? Alignment.centerLeft : Alignment.centerRight,
+                    alignment:
+                        value ? Alignment.centerLeft : Alignment.centerRight,
                     child: Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 10),
                       child: Text(
                         value ? "ON" : "OFF",
-                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
+                        style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16),
                       ),
                     ),
                   ),
                   Align(
-                    alignment: value ? Alignment.centerRight : Alignment.centerLeft,
+                    alignment:
+                        value ? Alignment.centerRight : Alignment.centerLeft,
                     child: Container(
                       width: 25,
                       height: 25,
-                      decoration: const BoxDecoration(shape: BoxShape.circle, color: Colors.white),
+                      decoration: const BoxDecoration(
+                          shape: BoxShape.circle, color: Colors.white),
                       child: Center(
                         child: Text(
                           value ? "✔" : "✖",
-                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: value ? Colors.green : Colors.red),
+                          style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: value ? Colors.green : Colors.red),
                         ),
                       ),
                     ),
@@ -541,7 +642,9 @@ class _SystemTweaksState extends State<SystemTweaks> with SingleTickerProviderSt
           Opacity(
             opacity: !isEditable ? 0.5 : 1.0,
             child: Text(
-              esp32Service.isManualOverride ? "Manual Override" : (esp32Service.isAutoMode ? "Controlled by Auto" : ""),
+              esp32Service.isManualOverride
+                  ? "Manual Override"
+                  : (esp32Service.isAutoMode ? "Controlled by Auto" : ""),
               style: const TextStyle(fontSize: 12, color: Colors.grey),
               textAlign: TextAlign.center,
             ),

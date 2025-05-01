@@ -3,7 +3,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:fluttertoast/fluttertoast.dart';
-import 'package:smart_lighting/screens/ForgotPasswordScreen/forgot_password_screen.dart'; // Added
+import 'package:smart_lighting/screens/ForgotPasswordScreen/forgot_password_screen.dart';
 import 'package:smart_lighting/screens/signup/signup_screen.dart';
 import 'package:smart_lighting/services/service.dart';
 
@@ -54,7 +54,7 @@ class _LoginState extends State<Login> {
                     const SizedBox(height: 20),
                     _password(),
                     const SizedBox(height: 10),
-                    _forgotPassword(context), // Added
+                    _forgotPassword(context),
                     const SizedBox(height: 40),
                     _signin(context),
                   ],
@@ -216,7 +216,7 @@ class _LoginState extends State<Login> {
           "Forgot Password?",
           style: GoogleFonts.raleway(
             textStyle: const TextStyle(
-              color: Color(0xff0D6EFD),
+              color: Color.fromRGBO(83, 166, 234, 1),
               fontWeight: FontWeight.w500,
               fontSize: 14,
             ),
@@ -229,7 +229,7 @@ class _LoginState extends State<Login> {
   Widget _signin(BuildContext context) {
     return ElevatedButton(
       style: ElevatedButton.styleFrom(
-        backgroundColor: const Color(0xff0D6EFD),
+        backgroundColor: const Color.fromRGBO(83, 166, 234, 1),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(14),
         ),
@@ -267,7 +267,56 @@ class _LoginState extends State<Login> {
                 context: context,
               );
 
-              if (!success) {
+              if (success) {
+                showDialog(
+                  context: context,
+                  barrierDismissible: false,
+                  builder: (dialogContext) => Dialog(
+                    backgroundColor:
+                        Colors.transparent, // Transparent background
+                    elevation: 0, // Remove shadow
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        ClipRRect(
+                          borderRadius:
+                              BorderRadius.circular(40), // Rounded image
+                          child: Image.asset(
+                            'assets/login/reminder.png',
+                            width: 520,
+                            height: 520,
+                            fit: BoxFit.contain,
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        TextButton(
+                          onPressed: () {
+                            if (dialogContext.mounted) {
+                              Navigator.of(dialogContext)
+                                  .pop(); // Close the dialog
+                            }
+                          },
+                          child: Text(
+                            'Close',
+                            style: GoogleFonts.raleway(
+                              textStyle: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w500,
+                                decoration: TextDecoration.underline,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+                // TODO: Navigate to home screen after dialog is closed
+                // if (context.mounted) {
+                //   Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => HomeScreen()));
+                // }
+              } else {
                 setState(() {
                   _emailError = "Login failed. Please try again.";
                 });

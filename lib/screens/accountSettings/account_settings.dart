@@ -384,7 +384,7 @@ class _AccountSettingsState extends State<AccountSettings>
                   ElevatedButton(
                     onPressed: _isLoading ? null : _updateEmail,
                     style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.blue,
+                        backgroundColor: Color.fromRGBO(83, 166, 234, 1),
                         foregroundColor: Colors.white),
                     child: _isLoading
                         ? const CircularProgressIndicator(color: Colors.white)
@@ -547,7 +547,7 @@ class _AccountSettingsState extends State<AccountSettings>
                   ElevatedButton(
                     onPressed: _isLoading ? null : _updatePassword,
                     style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.blue,
+                        backgroundColor: Color.fromRGBO(83, 166, 234, 1),
                         foregroundColor: Colors.white),
                     child: _isLoading
                         ? const CircularProgressIndicator(color: Colors.white)

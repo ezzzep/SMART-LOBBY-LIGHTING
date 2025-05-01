@@ -32,7 +32,8 @@ class DrawerWidget extends StatelessWidget {
           padding: EdgeInsets.zero,
           children: [
             DrawerHeader(
-              decoration: const BoxDecoration(color: Colors.blue),
+              decoration:
+                  const BoxDecoration(color: Color.fromRGBO(83, 166, 234, 1)),
               child: FutureBuilder(
                 future: _getUserInfo(),
                 builder: (context, snapshot) {
@@ -115,7 +116,7 @@ class DrawerWidget extends StatelessWidget {
   Widget _buildDrawerItem(
       IconData icon, String title, BuildContext context, Widget screen) {
     return ListTile(
-      leading: Icon(icon, color: Colors.blue),
+      leading: Icon(icon, color: Color.fromRGBO(83, 166, 234, 1)),
       title: Text(title),
       onTap: () {
         Navigator.pop(context);

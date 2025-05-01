@@ -122,14 +122,14 @@ class _SetupScreenState extends State<SetupScreen> {
                       isChecking
                           ? 'Checking connection...'
                           : esp32Service.isConnected
-                          ? 'You are already connected to ESP'
-                          : esp32Service.isReconnecting
-                          ? 'Reconnecting to ESP32...'
-                          : 'Wi-Fi Configuration',
+                              ? 'You are already connected to ESP'
+                              : esp32Service.isReconnecting
+                                  ? 'Reconnecting to ESP32...'
+                                  : 'Wi-Fi Configuration',
                       style: const TextStyle(
                           fontSize: 20,
                           fontWeight: FontWeight.bold,
-                          color: Colors.blue),
+                          color: Color.fromRGBO(83, 166, 234, 1)),
                     ),
                     const SizedBox(height: 20),
                     if (isChecking || esp32Service.isReconnecting) ...[
@@ -144,8 +144,10 @@ class _SetupScreenState extends State<SetupScreen> {
                         obscure: true,
                         suffixIcon: IconButton(
                           icon: Icon(
-                            _obscurePassword ? Icons.visibility_off : Icons.visibility,
-                            color: Colors.blue,
+                            _obscurePassword
+                                ? Icons.visibility_off
+                                : Icons.visibility,
+                            color: Color.fromRGBO(83, 166, 234, 1),
                           ),
                           onPressed: () {
                             setState(() {
@@ -162,44 +164,49 @@ class _SetupScreenState extends State<SetupScreen> {
                         style: const TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w600,
-                            color: Colors.blue),
+                            color: Color.fromRGBO(83, 166, 234, 1)),
                       ),
                     ],
                     const SizedBox(height: 20),
                     _buildActionButton(context, esp32Service),
-                    if (!esp32Service.isConnected && esp32Service.esp32IP != null) ...[
+                    if (!esp32Service.isConnected &&
+                        esp32Service.esp32IP != null) ...[
                       const SizedBox(height: 10),
                       ElevatedButton(
-                        onPressed: isConnecting || esp32Service.isReconnecting || isChecking
+                        onPressed: isConnecting ||
+                                esp32Service.isReconnecting ||
+                                isChecking
                             ? null
                             : () async {
-                          setState(() => isConnecting = true);
-                          try {
-                            await esp32Service.forceBLEMode();
-                            Fluttertoast.showToast(
-                              msg: "ESP32 reset to BLE mode",
-                              toastLength: Toast.LENGTH_SHORT,
-                              gravity: ToastGravity.BOTTOM,
-                            );
-                          } catch (e) {
-                            Fluttertoast.showToast(
-                              msg: "Failed to reset ESP32: $e",
-                              toastLength: Toast.LENGTH_LONG,
-                              gravity: ToastGravity.BOTTOM,
-                            );
-                          } finally {
-                            setState(() => isConnecting = false);
-                          }
-                        },
+                                setState(() => isConnecting = true);
+                                try {
+                                  await esp32Service.forceBLEMode();
+                                  Fluttertoast.showToast(
+                                    msg: "ESP32 reset to BLE mode",
+                                    toastLength: Toast.LENGTH_SHORT,
+                                    gravity: ToastGravity.BOTTOM,
+                                  );
+                                } catch (e) {
+                                  Fluttertoast.showToast(
+                                    msg: "Failed to reset ESP32: $e",
+                                    toastLength: Toast.LENGTH_LONG,
+                                    gravity: ToastGravity.BOTTOM,
+                                  );
+                                } finally {
+                                  setState(() => isConnecting = false);
+                                }
+                              },
                         style: ElevatedButton.styleFrom(
                           padding: const EdgeInsets.symmetric(vertical: 16),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12)),
                           backgroundColor: Colors.red,
                           foregroundColor: Colors.white,
                         ),
                         child: const Text(
                           'Force BLE Mode',
-                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                          style: TextStyle(
+                              fontSize: 16, fontWeight: FontWeight.w600),
                         ),
                       ),
                     ],
@@ -221,7 +228,7 @@ class _SetupScreenState extends State<SetupScreen> {
       obscureText: obscure && _obscurePassword,
       decoration: InputDecoration(
         labelText: label,
-        prefixIcon: Icon(icon, color: Colors.blue),
+        prefixIcon: Icon(icon, color: Color.fromRGBO(83, 166, 234, 1)),
         suffixIcon: suffixIcon,
         filled: true,
         fillColor: Colors.grey.shade100,
@@ -237,72 +244,72 @@ class _SetupScreenState extends State<SetupScreen> {
       onPressed: isConnecting || esp32Service.isReconnecting || isChecking
           ? null
           : (esp32Service.isConnected
-          ? () async {
-        setState(() => isConnecting = true);
-        try {
-          await esp32Service.disconnect();
-          Fluttertoast.showToast(
-            msg: "Disconnected from ESP32",
-            toastLength: Toast.LENGTH_SHORT,
-            gravity: ToastGravity.BOTTOM,
-          );
-        } catch (e) {
-          Fluttertoast.showToast(
-            msg: "Failed to disconnect: $e",
-            toastLength: Toast.LENGTH_LONG,
-            gravity: ToastGravity.BOTTOM,
-          );
-        } finally {
-          setState(() => isConnecting = false);
-        }
-      }
-          : () async {
-        setState(() => isConnecting = true);
-        try {
-          if (ssidController.text.isEmpty ||
-              passwordController.text.isEmpty) {
-            throw Exception("Please enter Wi-Fi SSID and password");
-          }
-          await esp32Service.configureWiFi(
-              ssidController.text, passwordController.text);
-          await _saveWiFiCredentials();
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-                content: Text('Setup successful'),
-                backgroundColor: Color(0xFFD8BFD8),
-                duration: Duration(milliseconds: 500)),
-          );
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (context) => const Home()),
-          );
-        } catch (e) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-                content: Text('Setup failed: $e'),
-                backgroundColor: Colors.redAccent,
-                duration: const Duration(milliseconds: 500)),
-          );
-        } finally {
-          setState(() => isConnecting = false);
-        }
-      }),
+              ? () async {
+                  setState(() => isConnecting = true);
+                  try {
+                    await esp32Service.disconnect();
+                    Fluttertoast.showToast(
+                      msg: "Disconnected from ESP32",
+                      toastLength: Toast.LENGTH_SHORT,
+                      gravity: ToastGravity.BOTTOM,
+                    );
+                  } catch (e) {
+                    Fluttertoast.showToast(
+                      msg: "Failed to disconnect: $e",
+                      toastLength: Toast.LENGTH_LONG,
+                      gravity: ToastGravity.BOTTOM,
+                    );
+                  } finally {
+                    setState(() => isConnecting = false);
+                  }
+                }
+              : () async {
+                  setState(() => isConnecting = true);
+                  try {
+                    if (ssidController.text.isEmpty ||
+                        passwordController.text.isEmpty) {
+                      throw Exception("Please enter Wi-Fi SSID and password");
+                    }
+                    await esp32Service.configureWiFi(
+                        ssidController.text, passwordController.text);
+                    await _saveWiFiCredentials();
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                          content: Text('Setup successful'),
+                          backgroundColor: Color(0xFFD8BFD8),
+                          duration: Duration(milliseconds: 500)),
+                    );
+                    Navigator.pushReplacement(
+                      context,
+                      MaterialPageRoute(builder: (context) => const Home()),
+                    );
+                  } catch (e) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                          content: Text('Setup failed: $e'),
+                          backgroundColor: Colors.redAccent,
+                          duration: const Duration(milliseconds: 500)),
+                    );
+                  } finally {
+                    setState(() => isConnecting = false);
+                  }
+                }),
       style: ElevatedButton.styleFrom(
         padding: const EdgeInsets.symmetric(vertical: 16),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        backgroundColor: Colors.blue,
+        backgroundColor: Color.fromRGBO(83, 166, 234, 1),
         foregroundColor: Colors.white,
       ),
       child: isConnecting || esp32Service.isReconnecting || isChecking
           ? const SizedBox(
-          width: 20,
-          height: 20,
-          child: CircularProgressIndicator(
-              color: Colors.white, strokeWidth: 2))
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(
+                  color: Colors.white, strokeWidth: 2))
           : Text(
-        esp32Service.isConnected ? 'DISCONNECT' : 'Setup',
-        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-      ),
+              esp32Service.isConnected ? 'DISCONNECT' : 'Setup',
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+            ),
     );
   }
 }

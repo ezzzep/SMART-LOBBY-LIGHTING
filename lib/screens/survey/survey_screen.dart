@@ -106,7 +106,7 @@ class SurveyScreenState extends State<SurveyScreen> {
                             });
                           },
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.blue,
+                            backgroundColor: Color.fromRGBO(83, 166, 234, 1),
                             foregroundColor: Colors.white,
                             padding: const EdgeInsets.symmetric(
                               horizontal: 32,

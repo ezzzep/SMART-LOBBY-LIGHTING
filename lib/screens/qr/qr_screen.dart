@@ -45,7 +45,7 @@ class QRScreen extends StatelessWidget {
                 size: 250.0,
                 gapless: false,
                 backgroundColor: Colors.white,
-                foregroundColor: Colors.blue,
+                foregroundColor: Color.fromRGBO(83, 166, 234, 1),
               ),
               const SizedBox(height: 16),
               const Text(
