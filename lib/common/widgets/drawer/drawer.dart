@@ -1,10 +1,11 @@
-// drawer.dart
 import 'package:flutter/material.dart';
 import 'package:smart_lighting/services/service.dart';
-import 'package:smart_lighting/screens/dashboard/dashboard_screen.dart'; // DashboardScreen
+import 'package:smart_lighting/screens/dashboard/dashboard_screen.dart';
 import 'package:smart_lighting/screens/setup/setup_screen.dart';
 import 'package:smart_lighting/screens/systemTweaks/system_tweaks_screen.dart';
-import 'package:smart_lighting/screens/accountSettings/account_settings.dart'; // Import AccountSettings
+import 'package:smart_lighting/screens/accountSettings/account_settings.dart';
+import 'package:smart_lighting/screens/qr/qr_screen.dart';
+import 'package:smart_lighting/screens/survey/survey_screen.dart';
 
 class DrawerWidget extends StatelessWidget {
   final AuthService authService;
@@ -79,6 +80,10 @@ class DrawerWidget extends StatelessWidget {
             _buildDrawerItem(Icons.wifi, 'Setup', context, const SetupScreen()),
             _buildDrawerItem(Icons.account_circle, 'Account', context,
                 const AccountSettings()),
+            _buildDrawerItem(
+                Icons.qr_code, 'Download our App', context, const QRScreen()),
+            _buildDrawerItem(
+                Icons.feedback, 'Survey', context, const SurveyScreen()),
             const Divider(),
             ListTile(
               leading: const Icon(Icons.logout, color: Colors.red),
@@ -89,7 +94,6 @@ class DrawerWidget extends StatelessWidget {
               ),
               onTap: () async {
                 await authService.signout(context: context);
-                // No need for additional navigation here since signout handles it
               },
             ),
           ],
@@ -109,18 +113,16 @@ class DrawerWidget extends StatelessWidget {
   }
 
   Widget _buildDrawerItem(
-      IconData icon, String title, BuildContext context, Widget? screen) {
+      IconData icon, String title, BuildContext context, Widget screen) {
     return ListTile(
       leading: Icon(icon, color: Colors.blue),
       title: Text(title),
       onTap: () {
         Navigator.pop(context);
-        if (screen != null) {
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (context) => screen),
-          );
-        }
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => screen),
+        );
       },
     );
   }
