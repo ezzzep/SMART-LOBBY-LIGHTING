@@ -12,7 +12,7 @@ class SurveyScreen extends StatefulWidget {
 
 class SurveyScreenState extends State<SurveyScreen> {
   final String surveyUrl =
-      'https://docs.google.com/forms/d/e/1FAIpQLSclXkH68qtzMA_NrrGfssUPFzjXZZSc0VuI192rhP1ihu2dhA/viewform?usp=sharing&hl=en';
+      'https://docs.google.com/forms/d/e/1FAIpQLSeInHMGaZiCYZe5sgPfn2OC-6yYud3E7cggOoZ2JSvdv916JA/viewform?usp=sharing&hl=en';
   bool _showWebView = false;
 
   @override
