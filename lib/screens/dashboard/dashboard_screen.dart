@@ -161,7 +161,7 @@ class _HomeState extends State<Home> {
             width: 170,
             height: 200,
             title: 'PIR SENSORS',
-            subtitle: 'Motion Detection',
+            subtitle: 'Motion Detection (5 Sensors)', // Updated subtitle
             isActive: esp32Service.isSensorsOn && esp32Service.pirEnabled,
             isManualOverride: esp32Service.isManualOverride,
           ),
