@@ -12,9 +12,11 @@ class ForgotPasswordScreen extends StatefulWidget {
 
 class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   final TextEditingController _emailController = TextEditingController();
-  final TextEditingController _currentPasswordController = TextEditingController();
+  final TextEditingController _currentPasswordController =
+      TextEditingController();
   final TextEditingController _newPasswordController = TextEditingController();
-  final TextEditingController _confirmPasswordController = TextEditingController();
+  final TextEditingController _confirmPasswordController =
+      TextEditingController();
 
   String? _emailError;
   String? _currentPasswordError;
@@ -54,7 +56,8 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   }
 
   // Check if the new password is the same as the current password
-  Future<bool> _isSameAsCurrentPassword(String email, String newPassword) async {
+  Future<bool> _isSameAsCurrentPassword(
+      String email, String newPassword) async {
     try {
       await FirebaseAuth.instance.signInWithEmailAndPassword(
         email: email,
@@ -134,14 +137,16 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     }
     if (!_hasUppercase) {
       setState(() {
-        _newPasswordError = "Password must contain at least one uppercase letter.";
+        _newPasswordError =
+            "Password must contain at least one uppercase letter.";
         _isLoading = false;
       });
       return;
     }
     if (!_hasLowercase) {
       setState(() {
-        _newPasswordError = "Password must contain at least one lowercase letter.";
+        _newPasswordError =
+            "Password must contain at least one lowercase letter.";
         _isLoading = false;
       });
       return;
@@ -155,7 +160,8 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     }
     if (!_hasSpecialChar) {
       setState(() {
-        _newPasswordError = "Password must contain at least one special character.";
+        _newPasswordError =
+            "Password must contain at least one special character.";
         _isLoading = false;
       });
       return;
@@ -163,7 +169,8 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
 
     try {
       // Step 1: Verify the user's identity by signing in with the current password
-      UserCredential userCredential = await FirebaseAuth.instance.signInWithEmailAndPassword(
+      UserCredential userCredential =
+          await FirebaseAuth.instance.signInWithEmailAndPassword(
         email: email,
         password: currentPassword,
       );
@@ -181,7 +188,8 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
       bool isSameAsCurrent = await _isSameAsCurrentPassword(email, newPassword);
       if (isSameAsCurrent) {
         setState(() {
-          _newPasswordError = "New password cannot be the same as the current password.";
+          _newPasswordError =
+              "New password cannot be the same as the current password.";
           _isLoading = false;
         });
         return;
@@ -191,7 +199,8 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
       await user.updatePassword(newPassword);
 
       Fluttertoast.showToast(
-        msg: "Password updated successfully. Please sign in with your new password.",
+        msg:
+            "Password updated successfully. Please sign in with your new password.",
         toastLength: Toast.LENGTH_LONG,
         gravity: ToastGravity.SNACKBAR,
         backgroundColor: Colors.black54,
@@ -227,7 +236,8 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
           _emailError = errorMessage;
         });
       } else if (e.code == 'requires-recent-login') {
-        errorMessage = "Please sign out and sign in again to update your password.";
+        errorMessage =
+            "Please sign out and sign in again to update your password.";
         setState(() {
           _emailError = errorMessage;
         });
@@ -264,15 +274,6 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                "Enter your email and current password, then set a new password.",
-                style: GoogleFonts.raleway(
-                  textStyle: const TextStyle(
-                    color: Colors.black,
-                    fontSize: 16,
-                  ),
-                ),
-              ),
               const SizedBox(height: 20),
               // Email Field
               Text(
@@ -365,11 +366,13 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                   ),
                   suffixIcon: IconButton(
                     icon: Icon(
-                      _obscureCurrentPassword ? Icons.visibility : Icons.visibility_off,
+                      _obscureCurrentPassword
+                          ? Icons.visibility
+                          : Icons.visibility_off,
                       color: Colors.grey,
                     ),
-                    onPressed: () =>
-                        setState(() => _obscureCurrentPassword = !_obscureCurrentPassword),
+                    onPressed: () => setState(() =>
+                        _obscureCurrentPassword = !_obscureCurrentPassword),
                   ),
                 ),
                 onChanged: (_) => setState(() {
@@ -420,11 +423,13 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                   ),
                   suffixIcon: IconButton(
                     icon: Icon(
-                      _obscureNewPassword ? Icons.visibility : Icons.visibility_off,
+                      _obscureNewPassword
+                          ? Icons.visibility
+                          : Icons.visibility_off,
                       color: Colors.grey,
                     ),
-                    onPressed: () =>
-                        setState(() => _obscureNewPassword = !_obscureNewPassword),
+                    onPressed: () => setState(
+                        () => _obscureNewPassword = !_obscureNewPassword),
                   ),
                 ),
                 onChanged: (value) {
@@ -500,11 +505,13 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                   ),
                   suffixIcon: IconButton(
                     icon: Icon(
-                      _obscureConfirmPassword ? Icons.visibility : Icons.visibility_off,
+                      _obscureConfirmPassword
+                          ? Icons.visibility
+                          : Icons.visibility_off,
                       color: Colors.grey,
                     ),
-                    onPressed: () =>
-                        setState(() => _obscureConfirmPassword = !_obscureConfirmPassword),
+                    onPressed: () => setState(() =>
+                        _obscureConfirmPassword = !_obscureConfirmPassword),
                   ),
                 ),
                 onChanged: (_) => setState(() {
@@ -514,7 +521,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
               const SizedBox(height: 30),
               ElevatedButton(
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xff0D6EFD),
+                  backgroundColor: const Color.fromRGBO(83, 166, 234, 1),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(14),
                   ),
@@ -525,9 +532,9 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                 child: _isLoading
                     ? const CircularProgressIndicator(color: Colors.white)
                     : const Text(
-                  "Update Password",
-                  style: TextStyle(color: Colors.white),
-                ),
+                        "Update Password",
+                        style: TextStyle(color: Colors.white),
+                      ),
               ),
             ],
           ),

@@ -29,7 +29,7 @@ class _SignupState extends State<Signup> {
 
   void _validateEmail(String value) {
     final emailRegex =
-    RegExp(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$');
+        RegExp(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$');
     setState(() {
       _emailError = value.isEmpty
           ? "Email is required"
@@ -189,7 +189,7 @@ class _SignupState extends State<Signup> {
               borderRadius: BorderRadius.circular(14),
               borderSide: BorderSide(
                 color: _passwordError == null &&
-                    _passwordController.text.isNotEmpty
+                        _passwordController.text.isNotEmpty
                     ? Colors.green
                     : (_passwordError != null ? Colors.red : Colors.grey),
                 width: 2,
@@ -212,7 +212,7 @@ class _SignupState extends State<Signup> {
   Widget _signupButton() {
     return ElevatedButton(
       style: ElevatedButton.styleFrom(
-        backgroundColor: const Color(0xff0D6EFD),
+        backgroundColor: const Color.fromRGBO(83, 166, 234, 1),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
         minimumSize: const Size(double.infinity, 60),
         elevation: 0,
