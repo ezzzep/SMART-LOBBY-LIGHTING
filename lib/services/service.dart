@@ -7,7 +7,6 @@ import 'package:smart_lighting/screens/verification/verify_email_screen.dart';
 import 'package:smart_lighting/screens/dashboard/dashboard_screen.dart';
 import 'package:smart_lighting/common/widgets/activation/activation.dart';
 import 'package:fluttertoast/fluttertoast.dart';
-import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -369,8 +368,6 @@ class ESP32Service extends ChangeNotifier {
   }
 
   String? esp32IP;
-  BluetoothDevice? esp32Device;
-  StreamSubscription<List<ScanResult>>? _subscription;
   Timer? _pollingTimer;
   Timer? _reconnectTimer;
   bool _isPolling = false;
@@ -378,7 +375,7 @@ class ESP32Service extends ChangeNotifier {
   Timer? _debounceTimer;
 
   bool _pirSensorActive = false;
-  List<String> _pirStatuses = List.filled(5, "NO MOTION"); // Updated to 5 PIRs
+  List<String> _pirStatuses = List.filled(5, "NO MOTION");
   double _temperature = 0.0;
   double _humidity = 0.0;
   bool _isConnected = false;
@@ -387,16 +384,16 @@ class ESP32Service extends ChangeNotifier {
   bool _isManualOverride = false;
   String _lastSensorData = "";
   int _sensorOffCount = 0;
-  String _relayStatus = "HIGH"; // Default to HIGH per logic
-  String _coolerStatus = "ON";  // Default to ON per logic
+  String _relayStatus = "HIGH";
+  String _coolerStatus = "ON";
   static const int _sensorOffThreshold = 3;
 
-  int _tempThreshold = 32;  // Updated default to match ESP32
-  int _humidThreshold = 65; // Updated default to match ESP32
+  int _tempThreshold = 32;
+  int _humidThreshold = 65;
   bool _pirEnabled = true;
-  int _lightIntensity = 2;  // Default HIGH MODE
+  int _lightIntensity = 2;
   bool _coolerEnabled = true;
-  bool _allowOffMode = false; // Property for allowOffMode
+  bool _allowOffMode = false;
 
   bool get pirSensorActive => _pirSensorActive;
   List<String> get pirStatuses => _pirStatuses;
@@ -529,6 +526,16 @@ class ESP32Service extends ChangeNotifier {
     await prefs.setString('esp32IP', esp32IP ?? '');
   }
 
+  Future<void> setESP32IP(String ip) async {
+    esp32IP = ip;
+    await _saveESP32IP();
+    isConnected = true;
+    isReconnecting = false;
+    _reconnectTimer?.cancel();
+    _startPolling();
+    notifyListeners();
+  }
+
   void _startPolling() {
     _pollingTimer?.cancel();
     _isPolling = true;
@@ -613,28 +620,18 @@ class ESP32Service extends ChangeNotifier {
     }
   }
 
-  Future<void> forceBLEMode() async {
-    try {
-      await initBLE();
-      if (esp32Device == null) throw Exception("No ESP32 device found");
-
-      await esp32Device!.connect(timeout: const Duration(seconds: 20));
-      List<BluetoothService> services = await esp32Device!.discoverServices();
-
-      BluetoothCharacteristic? resetChar;
-      for (var service in services) {
-        for (var char in service.characteristics) {
-          if (char.uuid.toString() == "74675807-4e0f-48a3-9ee8-d571dc87896f") {
-            resetChar = char;
-            break;
-          }
+  Future<void> disconnect() async {
+    if (esp32IP != null) {
+      try {
+        final response = await http
+            .get(Uri.parse('http://$esp32IP/disconnect'))
+            .timeout(const Duration(seconds: 2));
+        if (response.statusCode == 200) {
+          Fluttertoast.showToast(msg: "ESP32 disconnected and switched to AP mode");
         }
-        if (resetChar != null) break;
+      } catch (e) {
+
       }
-
-      if (resetChar == null) throw Exception("Reset characteristic not found");
-
-      await resetChar.write("RESET".codeUnits, withoutResponse: false);
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove('esp32IP');
       esp32IP = null;
@@ -644,16 +641,12 @@ class ESP32Service extends ChangeNotifier {
       isConnected = false;
       isReconnecting = false;
       pirSensorActive = false;
-      pirStatuses = List.filled(5, "NO MOTION"); // Updated to 5 PIRs
+      pirStatuses = List.filled(5, "NO MOTION");
       temperature = 0.0;
       humidity = 0.0;
       relayStatus = "HIGH";
       coolerStatus = "ON";
       _notifyWithDebounce();
-    } catch (e) {
-      throw e;
-    } finally {
-      await esp32Device?.disconnect();
     }
   }
 
@@ -665,7 +658,7 @@ class ESP32Service extends ChangeNotifier {
       temperature = 0.0;
       humidity = 0.0;
       pirSensorActive = false;
-      pirStatuses = List.filled(5, "NO MOTION"); // Updated to 5 PIRs
+      pirStatuses = List.filled(5, "NO MOTION");
       _sensorOffCount = 0;
       relayStatus = "HIGH";
       coolerStatus = coolerEnabled ? "ON" : "OFF";
@@ -688,10 +681,10 @@ class ESP32Service extends ChangeNotifier {
         String pirStatus = part.split(":")[1];
         if (pirStatus == "DISABLED") {
           pirSensorActive = false;
-          pirStatuses = List.filled(5, "NO MOTION"); // Updated to 5 PIRs
+          pirStatuses = List.filled(5, "NO MOTION");
         } else {
           List<String> pirStates = pirStatus.split(",");
-          List<String> newStatuses = List.filled(5, "NO MOTION"); // Updated to 5 PIRs
+          List<String> newStatuses = List.filled(5, "NO MOTION");
           bool anyMotion = false;
           for (int i = 0; i < pirStates.length && i < 5; i++) {
             List<String> stateParts = pirStates[i].split(":");
@@ -726,7 +719,7 @@ class ESP32Service extends ChangeNotifier {
         isManualOverride = true;
         isAutoMode = false;
         pirSensorActive = false;
-        pirStatuses = List.filled(5, "NO MOTION"); // Updated to 5 PIRs
+        pirStatuses = List.filled(5, "NO MOTION");
         relayStatus = "HIGH";
         coolerStatus = coolerEnabled ? "ON" : "OFF";
       }
@@ -738,91 +731,6 @@ class ESP32Service extends ChangeNotifier {
       }
     }
     _notifyWithDebounce();
-  }
-
-  Future<void> initBLE() async {
-    await FlutterBluePlus.startScan(timeout: const Duration(seconds: 20));
-    _subscription = FlutterBluePlus.scanResults.listen((results) {
-      for (ScanResult r in results) {
-        if (r.device.name == "ESP32_PIR_Sensor") {
-          esp32Device = r.device;
-          FlutterBluePlus.stopScan();
-          _subscription?.cancel();
-          _subscription = null;
-          break;
-        }
-      }
-    });
-    await Future.delayed(const Duration(seconds: 20));
-  }
-
-  Future<void> configureWiFi(String ssid, String password) async {
-    try {
-      if (esp32Device == null) await initBLE();
-      if (esp32Device == null) throw Exception("No ESP32 device found");
-
-      await esp32Device!.connect(timeout: const Duration(seconds: 20));
-      List<BluetoothService> services = await esp32Device!.discoverServices();
-
-      BluetoothCharacteristic? configChar;
-      for (var service in services) {
-        for (var char in service.characteristics) {
-          if (char.uuid.toString() == "74675807-4e0f-48a3-9ee8-d571dc87896e") {
-            configChar = char;
-            break;
-          }
-        }
-        if (configChar != null) break;
-      }
-
-      if (configChar == null) throw Exception("Config characteristic not found");
-
-      await configChar.setNotifyValue(true);
-      String configString = "WIFI:$ssid:$password";
-      await configChar.write(configString.codeUnits, withoutResponse: false);
-
-      await Future.delayed(const Duration(seconds: 10));
-      List<int> ipBytes = await configChar.read();
-      esp32IP = String.fromCharCodes(ipBytes);
-
-      if (esp32IP == null || esp32IP!.isEmpty) throw Exception("ESP32 IP not received");
-
-      await _saveESP32IP();
-      isConnected = true;
-      isReconnecting = false;
-      _reconnectTimer?.cancel();
-      _startPolling();
-    } catch (e) {
-      throw e;
-    } finally {
-      await esp32Device?.disconnect();
-    }
-  }
-
-  Future<void> disconnect() async {
-    if (esp32IP != null) {
-      try {
-        final response = await http
-            .get(Uri.parse('http://$esp32IP/restart'))
-            .timeout(const Duration(seconds: 2));
-        if (response.statusCode == 200) Fluttertoast.showToast(msg: "ESP32 restarting...");
-      } catch (e) {}
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.remove('esp32IP');
-      esp32IP = null;
-      _pollingTimer?.cancel();
-      _reconnectTimer?.cancel();
-      _isPolling = false;
-      isConnected = false;
-      isReconnecting = false;
-      pirSensorActive = false;
-      pirStatuses = List.filled(5, "NO MOTION"); // Updated to 5 PIRs
-      temperature = 0.0;
-      humidity = 0.0;
-      relayStatus = "HIGH";
-      coolerStatus = "ON";
-      _notifyWithDebounce();
-    }
   }
 
   Future<void> sendConfigToESP32({
@@ -884,13 +792,9 @@ class ESP32Service extends ChangeNotifier {
   }
 
   void dispose() {
-    _subscription?.cancel();
     _pollingTimer?.cancel();
     _reconnectTimer?.cancel();
     _debounceTimer?.cancel();
-    esp32Device?.disconnect();
-    _subscription = null;
-    esp32Device = null;
     _isPolling = false;
   }
 }

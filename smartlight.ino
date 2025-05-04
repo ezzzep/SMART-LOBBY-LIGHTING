@@ -1,40 +1,35 @@
 #include <WiFi.h>
 #include <WebServer.h>
-#include <BLEDevice.h>
-#include <BLEServer.h>
-#include <BLEUtils.h>
-#include <BLE2902.h>
 #include <Adafruit_AHTX0.h>
 #include <Wire.h>
 #include <LiquidCrystal_I2C.h>
 #include <Preferences.h>
+#include <ArduinoJson.h>
 
 #define LCD_I2C_ADDRESS 0x27
 LiquidCrystal_I2C lcd(LCD_I2C_ADDRESS, 20, 4);
 bool lcdActive = false;
 
-#define SERVICE_UUID "74675807-4e0f-48a3-9ee8-d571dc87896e"
-#define CONFIG_CHAR_UUID "74675807-4e0f-48a3-9ee8-d571dc87896e"
-#define RESET_CHAR_UUID "74675807-4e0f-48a3-9ee8-d571dc87896f"
-
-#define I2C_SDA 21
-#define I2C_SCL 22
-#define PIR_1   23
-#define PIR_2   19
-#define PIR_3   18
-#define PIR_4   5
-#define PIR_5   4
+#define I2C1_SDA 21  // SDA for first AHT10 (aht1) and LCD
+#define I2C1_SCL 22  // SCL for first AHT10 (aht1) and LCD
+#define I2C2_SDA 26  // SDA for second AHT10 (aht2)
+#define I2C2_SCL 27  // SCL for second AHT10 (aht2)
+#define PIR_1 23
+#define PIR_2 19
+#define PIR_3 18
+#define PIR_4 5
+#define PIR_5 4
 #define RELAY_1 15    // Light Circuit 1 - Relay 1
 #define RELAY_2 17    // Light Circuit 1 - Relay 2
 #define RELAY_3 33    // Light Circuit 2 - Relay 3
 #define RELAY_4 32    // Light Circuit 2 - Relay 4
-#define RELAY_COOLER 16 // Cooler
+#define RELAY_COOLER 16  // Cooler
 
 const int pirPins[5] = {PIR_1, PIR_2, PIR_3, PIR_4, PIR_5};
 int pirStates[5] = {LOW, LOW, LOW, LOW, LOW};
 unsigned long lastMotionTimes[5] = {0};
 bool pirFailed[5] = {false};
-const unsigned long PIR_FAIL_THRESHOLD = 24 * 60 * 60 * 1000; // 24 hours in ms
+const unsigned long PIR_FAIL_THRESHOLD = 24 * 60 * 60 * 1000;  // 24 hours in ms
 
 const unsigned long PIR_COOLDOWN = 5000;
 const int PIR_TRIGGER_LIMIT = 5;
@@ -53,16 +48,12 @@ Adafruit_AHTX0 aht2;
 
 WebServer server(80);
 Preferences prefs;
+
 const int relay1Pin = RELAY_1;
 const int relay2Pin = RELAY_2;
 const int relay3Pin = RELAY_3;
 const int relay4Pin = RELAY_4;
 const int relayCoolerPin = RELAY_COOLER;
-
-BLECharacteristic* pConfigCharacteristic;
-BLECharacteristic* pResetCharacteristic;
-BLEAdvertising* pAdvertising;
-bool isWiFiMode = false;
 
 float tempThreshold = 32.0;
 float humidThreshold = 65.0;
@@ -78,6 +69,13 @@ bool sensorsPowered = true;
 unsigned long invalidStartTime = 0;
 bool invalidReadingsActive = false;
 const unsigned long INVALID_THRESHOLD = 2000;
+unsigned long lastReinitAttempt = 0;
+const unsigned long REINIT_INTERVAL = 30000; // Reinitialize every 30 seconds if both sensors fail
+
+const char* apSSID = "ESP SMART LIGHT";
+const char* apPassword = "12345678";
+
+bool isClientConnected = false; // Tracks if app has connected via /sensors
 
 void savePreferences() {
     prefs.begin("settings", false);
@@ -89,6 +87,7 @@ void savePreferences() {
     prefs.putBool("coolerEnabled", coolerEnabled);
     prefs.putBool("allowOffMode", allowOffMode);
     prefs.end();
+    Serial.println("ESP32: Preferences saved");
 }
 
 void loadPreferences() {
@@ -101,28 +100,148 @@ void loadPreferences() {
     coolerEnabled = prefs.getBool("coolerEnabled", true);
     allowOffMode = prefs.getBool("allowOffMode", false);
     prefs.end();
+    Serial.println("ESP32: Preferences loaded");
+}
+
+bool initLCD() {
+    lcd.init();
+    lcd.backlight();
+    Wire.beginTransmission(LCD_I2C_ADDRESS);
+    int error = Wire.endTransmission();
+    bool success = (error == 0);
+    if (success) {
+        Serial.println("ESP32: LCD initialized successfully");
+    } else {
+        Serial.println("ESP32: Failed to initialize LCD at address 0x27, I2C error: " + String(error));
+    }
+    return success;
+}
+
+bool checkSensorI2C(TwoWire &i2c, uint8_t address) {
+    i2c.beginTransmission(address);
+    int error = i2c.endTransmission();
+    bool success = (error == 0);
+    if (!success) {
+        Serial.println("ESP32: I2C check failed for address 0x" + String(address, HEX) + " on " + (&i2c == &Wire ? "I2C1" : "I2C2") + ", error: " + String(error));
+        // Attempt to clear I2C bus
+        i2c.end();
+        i2c.begin((&i2c == &Wire) ? I2C1_SDA : I2C2_SDA, (&i2c == &Wire) ? I2C1_SCL : I2C2_SCL, 50000);
+    } else {
+        Serial.println("ESP32: I2C check for address 0x" + String(address, HEX) + " on " + (&i2c == &Wire ? "I2C1" : "I2C2") + ": Success");
+    }
+    return success;
+}
+
+void reinitI2C() {
+    Serial.println("ESP32: Reinitializing I2C buses...");
+    Wire.end();
+    Wire1.end();
+    Wire.begin(I2C1_SDA, I2C1_SCL, 50000); // 50kHz for stability
+    Wire1.begin(I2C2_SDA, I2C2_SCL, 50000);
+    if (!aht1.begin(&Wire, 0x38)) {
+        Serial.println("ESP32: AHT10 Sensor 1 not found after I2C reinit");
+    } else {
+        Serial.println("ESP32: AHT10 Sensor 1 reinitialized");
+    }
+    if (!aht2.begin(&Wire1, 0x38)) {
+        Serial.println("ESP32: AHT10 Sensor 2 not found after I2C reinit");
+    } else {
+        Serial.println("ESP32: AHT10 Sensor 2 reinitialized");
+    }
+    lcdActive = initLCD();
+    lastReinitAttempt = millis();
+}
+
+void displayIPAddress(String ip) {
+    if (!lcdActive) {
+        Serial.println("ESP32: LCD is not active, skipping IP display");
+        return;
+    }
+    Wire.beginTransmission(LCD_I2C_ADDRESS);
+    int error = Wire.endTransmission();
+    if (error != 0) {
+        Serial.println("ESP32: LCD I2C communication failed, error: " + String(error) + ", attempting reinitialization");
+        lcdActive = initLCD();
+        if (!lcdActive) {
+            Serial.println("ESP32: LCD reinitialization failed");
+            return;
+        }
+    }
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("WiFi Connected");
+    lcd.setCursor(0, 1);
+    lcd.print("IP Address:");
+    lcd.setCursor(0, 2);
+    lcd.print(ip);
+    lcd.setCursor(0, 3);
+    lcd.print("Enter in App");
+    Serial.println("ESP32: LCD updated with IP: " + ip);
+}
+
+void displayAPMode() {
+    if (!lcdActive) {
+        Serial.println("ESP32: LCD is not active, skipping AP mode display");
+        return;
+    }
+    Wire.beginTransmission(LCD_I2C_ADDRESS);
+    int error = Wire.endTransmission();
+    if (error != 0) {
+        Serial.println("ESP32: LCD I2C communication failed, error: " + String(error) + ", attempting reinitialization");
+        lcdActive = initLCD();
+        if (!lcdActive) {
+            Serial.println("ESP32: LCD reinitialization failed");
+            return;
+        }
+    }
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("AP MODE");
+    lcd.setCursor(0, 1);
+    lcd.print("SSID: ESP SMART LIGHT");
+    lcd.setCursor(0, 2);
+    lcd.print("PASS: 12345678");
+    lcd.setCursor(0, 3);
+    lcd.print("IP: 192.168.4.1");
+    Serial.println("ESP32: LCD updated with AP mode info: SSID=ESP SMART LIGHT, PASS=12345678, IP=192.168.4.1");
 }
 
 void updateDisplay(float temp, float humid, bool sensorsOn) {
-    if (lcdActive) {
-        lcd.clear();
-        if (sensorsOn) {
-            lcd.setCursor(0, 0);
-            lcd.print("Temp: "); lcd.print(temp, 1); lcd.print("C");
-            lcd.setCursor(0, 1);
-            lcd.print("Humid: "); lcd.print(humid, 1); lcd.print("%");
-            lcd.setCursor(0, 2);
-            lcd.print("PIR: "); lcd.print(getPIRStatus().substring(0, 12));
-            lcd.setCursor(0, 3);
-            lcd.print("Mode: "); lcd.print(isAutoMode ? "AUTO" : "MANUAL");
-        } else {
-            lcd.setCursor(0, 0);
-            lcd.print("MANUAL OVERRIDE");
-            lcd.setCursor(0, 1);
-            lcd.print("Lights: HIGH");
-            lcd.setCursor(0, 2);
-            lcd.print("Cooler: ON");
+    if (!lcdActive) {
+        Serial.println("ESP32: LCD is not active, skipping update");
+        return;
+    }
+    Wire.beginTransmission(LCD_I2C_ADDRESS);
+    int error = Wire.endTransmission();
+    if (error != 0) {
+        Serial.println("ESP32: LCD I2C communication failed, error: " + String(error) + ", attempting reinitialization");
+        lcdActive = initLCD();
+        if (!lcdActive) {
+            Serial.println("ESP32: LCD reinitialization failed");
+            return;
         }
+    }
+    Serial.println("ESP32: Writing to LCD: " + String(sensorsOn ? "Sensor Data" : "Manual Override"));
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    if (sensorsOn) {
+        lcd.print("Temp: "); lcd.print(temp, 1); lcd.print("°C");
+        lcd.setCursor(0, 1);
+        lcd.print("Humid: "); lcd.print(humid, 1); lcd.print("%");
+        lcd.setCursor(0, 2);
+        lcd.print("PIR: "); lcd.print(getPIRStatus().substring(0, 12));
+        lcd.setCursor(0, 3);
+        lcd.print("Mode: "); lcd.print(isAutoMode ? "AUTO" : "MANUAL");
+        Serial.println("ESP32: LCD updated with sensor data");
+    } else {
+        lcd.print("MANUAL OVERRIDE");
+        lcd.setCursor(0, 1);
+        lcd.print("Lights: HIGH");
+        lcd.setCursor(0, 2);
+        lcd.print("Cooler: ON");
+        lcd.setCursor(0, 3);
+        lcd.print("Sensors: OFF");
+        Serial.println("ESP32: LCD updated with Manual Override message");
     }
 }
 
@@ -168,20 +287,53 @@ void setLightAndCoolerIntensity(int intensity) {
 
 void setCoolerState(bool state) {
     unsigned long currentTime = millis();
-    if (state != currentCoolerState && (currentTime - lastCoolerChange >= RELAY_DELAY)) {
-        digitalWrite(relayCoolerPin, state ? HIGH : LOW);
+    if (state == currentCoolerState) {
+        return;
+    }
+    if (currentTime - lastCoolerChange >= RELAY_DELAY) {
+        digitalWrite(relayCoolerPin, state ? LOW : HIGH);
         Serial.println("ESP32: Cooler " + String(state ? "ON" : "OFF"));
         currentCoolerState = state;
         lastCoolerChange = currentTime;
-    } else if (state != currentCoolerState) {
+    } else {
         Serial.println("ESP32: Cooler change delayed due to relay protection");
     }
 }
 
 void updateSensorValues() {
+    static bool lastSensorsPowered = true;
     sensors_event_t humid1, temp1, humid2, temp2;
-    bool sensor1Valid = aht1.getEvent(&humid1, &temp1);
-    bool sensor2Valid = aht2.getEvent(&humid2, &temp2);
+    bool i2c1Valid = checkSensorI2C(Wire, 0x38);
+    bool i2c2Valid = checkSensorI2C(Wire1, 0x38);
+    bool sensor1Valid = false;
+    bool sensor2Valid = false;
+
+    // Attempt to read AHT10 sensors with error handling
+    if (i2c1Valid) {
+        if (aht1.begin(&Wire, 0x38)) { // Reinitialize if needed
+            sensor1Valid = aht1.getEvent(&humid1, &temp1);
+            if (!sensor1Valid) {
+                Serial.println("ESP32: Failed to read AHT10 Sensor 1 despite valid I2C");
+            }
+        } else {
+            Serial.println("ESP32: Failed to reinitialize AHT10 Sensor 1");
+        }
+    } else {
+        Serial.println("ESP32: I2C1 invalid for AHT10 Sensor 1");
+    }
+
+    if (i2c2Valid) {
+        if (aht2.begin(&Wire1, 0x38)) { // Reinitialize if needed
+            sensor2Valid = aht2.getEvent(&humid2, &temp2);
+            if (!sensor2Valid) {
+                Serial.println("ESP32: Failed to read AHT10 Sensor 2 despite valid I2C");
+            }
+        } else {
+            Serial.println("ESP32: Failed to reinitialize AHT10 Sensor 2");
+        }
+    } else {
+        Serial.println("ESP32: I2C2 invalid for AHT10 Sensor 2");
+    }
 
     Serial.print("ESP32: Sensor 1 Valid: "); Serial.println(sensor1Valid ? "Yes" : "No");
     Serial.print("ESP32: Sensor 2 Valid: "); Serial.println(sensor2Valid ? "Yes" : "No");
@@ -199,6 +351,7 @@ void updateSensorValues() {
             tempSum += temp1Val;
             humidSum += humid1Val;
             validSensors++;
+            Serial.print("ESP32: Sensor 1 - Temp: "); Serial.print(temp1Val); Serial.print(" °C, Humid: "); Serial.print(humid1Val); Serial.println(" %");
         }
     }
 
@@ -211,8 +364,11 @@ void updateSensorValues() {
             tempSum += temp2Val;
             humidSum += humid2Val;
             validSensors++;
+            Serial.print("ESP32: Sensor 2 - Temp: "); Serial.print(temp2Val); Serial.print(" °C, Humid: "); Serial.print(humid2Val); Serial.println(" %");
         }
     }
+
+    Serial.print("ESP32: Valid Sensors Count: "); Serial.println(validSensors);
 
     if (validSensors > 0) {
         if (!sensorsPowered) {
@@ -220,6 +376,7 @@ void updateSensorValues() {
             sensorsPowered = true;
             invalidStartTime = 0;
             invalidReadingsActive = false;
+            updateDisplay(currentTemp, currentHumid, sensorsPowered);
             Serial.flush();
         }
         currentTemp = tempSum / validSensors;
@@ -232,8 +389,15 @@ void updateSensorValues() {
             invalidStartTime = millis();
             Serial.println("ESP32: Started tracking invalid readings");
         }
-
         unsigned long currentTime = millis();
+        Serial.print("ESP32: Invalid readings duration: "); Serial.print(currentTime - invalidStartTime); Serial.println(" ms");
+
+        // Attempt periodic reinitialization if both sensors fail
+        if (currentTime - lastReinitAttempt >= REINIT_INTERVAL) {
+            Serial.println("ESP32: Both sensors failed, attempting I2C reinitialization");
+            reinitI2C();
+        }
+
         if (invalidReadingsActive && (currentTime - invalidStartTime >= INVALID_THRESHOLD)) {
             if (sensorsPowered) {
                 Serial.println("ESP32: 2 seconds of invalid readings - entering Manual Override");
@@ -242,10 +406,16 @@ void updateSensorValues() {
                 currentHumid = 0.0;
                 setLightAndCoolerIntensity(2);
                 setCoolerState(true);
+                updateDisplay(currentTemp, currentHumid, sensorsPowered);
                 Serial.println("ESP32: Relays set to HIGH due to sustained invalid readings");
                 Serial.flush();
             }
         }
+    }
+
+    if (sensorsPowered != lastSensorsPowered) {
+        Serial.println("ESP32: sensorsPowered changed to " + String(sensorsPowered));
+        lastSensorsPowered = sensorsPowered;
     }
 }
 
@@ -267,17 +437,14 @@ void handleRelayAndPIR() {
             overrideReported = false;
         }
     }
-
     bool anyMotion = false;
     unsigned long currentTime = millis();
-
     if (pirEnabled) {
         if (currentTime - lastPirTriggerWindow > PIR_WINDOW) {
             for (int i = 0; i < 5; i++) pirTriggerCount[i] = 0;
             lastPirTriggerWindow = currentTime;
             Serial.println("ESP32: PIR trigger window reset");
         }
-
         for (int i = 0; i < 5; i++) {
             int pirVal = digitalRead(pirPins[i]);
             if (pirVal == HIGH) {
@@ -307,13 +474,16 @@ void handleRelayAndPIR() {
             if (pirStates[i] == HIGH) anyMotion = true;
         }
     }
-
     bool highTempOrHumid = (currentTemp > tempThreshold || currentHumid > humidThreshold);
-
+    bool coolerOn = currentCoolerState;
+    if (coolerEnabled) {
+        coolerOn = highTempOrHumid;
+    } else {
+        coolerOn = false;
+    }
+    setCoolerState(coolerOn);
     if (isAutoMode) {
         int targetIntensity = 2;
-        bool coolerOn = false;
-
         if (pirEnabled && anyMotion) {
             if (highTempOrHumid) {
                 targetIntensity = 1;
@@ -323,26 +493,10 @@ void handleRelayAndPIR() {
         } else {
             targetIntensity = allowOffMode ? 0 : 1;
         }
-
         setLightAndCoolerIntensity(targetIntensity);
-        coolerOn = (targetIntensity == 1 || targetIntensity == 2);
-        setCoolerState(coolerOn);
-        Serial.println("ESP32: Cooler " + String(coolerOn ? "ON" : "OFF") + " (Auto: tied to light state)");
+        Serial.println("ESP32: Cooler " + String(coolerOn ? "ON" : "OFF") + " (Auto: based on temp/humidity)");
     } else {
-        bool coolerOn = coolerEnabled;
-
-        if (!pirEnabled) {
-            if (highTempOrHumid) {
-                setLightAndCoolerIntensity(1);
-            } else {
-                setLightAndCoolerIntensity(2);
-            }
-        } else {
-            setLightAndCoolerIntensity(lightIntensity);
-            coolerOn = coolerEnabled && (lightIntensity == 1 || lightIntensity == 2);
-        }
-
-        setCoolerState(coolerOn);
+        setLightAndCoolerIntensity(lightIntensity);
         Serial.println("ESP32: Cooler " + String(coolerOn ? "ON" : "OFF") + " (Manual: " + (coolerEnabled ? "enabled" : "disabled") + ")");
     }
 }
@@ -370,11 +524,13 @@ String getRelayStatus() {
 
 String getCoolerStatus() {
     int cooler = digitalRead(relayCoolerPin);
-    return coolerEnabled ? (cooler == HIGH ? "ON" : "OFF") : "DISABLED";
+    return coolerEnabled ? (cooler == LOW ? "ON" : "OFF") : "DISABLED";
 }
 
 void startWiFiServer() {
     server.on("/sensors", []() {
+        isClientConnected = true;
+        Serial.println("ESP32: App connected via /sensors, displaying sensor data on LCD");
         String response;
         if (!sensorsPowered) {
             response = "SENSORS:OFF,MODE:MANUAL_OVERRIDE,LCD:" + String(lcdActive ? "ACTIVE" : "INACTIVE");
@@ -396,15 +552,6 @@ void startWiFiServer() {
         server.send(200, "text/plain", response);
     });
 
-    server.on("/restart", []() {
-        server.send(200, "text/plain", "Restarting ESP32...");
-        delay(1000);
-        WiFi.disconnect();
-        isWiFiMode = false;
-        server.close();
-        pAdvertising->start();
-    });
-
     server.on("/config", HTTP_POST, []() {
         if (server.hasArg("tempThreshold") && server.hasArg("humidThreshold") &&
             server.hasArg("pirEnabled") && server.hasArg("lightIntensity") &&
@@ -417,7 +564,6 @@ void startWiFiServer() {
             bool requestedAutoMode = (server.arg("isAutoMode") == "true");
             coolerEnabled = (server.arg("coolerEnabled") == "true");
             allowOffMode = (server.arg("allowOffMode") == "true");
-
             if (lightIntensity < 0 || lightIntensity > 2) lightIntensity = 2;
             if (!sensorsPowered) {
                 setLightAndCoolerIntensity(2);
@@ -426,79 +572,94 @@ void startWiFiServer() {
                 isAutoMode = requestedAutoMode;
                 if (!isAutoMode) {
                     setLightAndCoolerIntensity(lightIntensity);
-                    setCoolerState(coolerEnabled && (lightIntensity == 1 || lightIntensity == 2));
                 }
             }
             savePreferences();
             server.send(200, "text/plain", "Config updated");
+            Serial.println("ESP32: Config updated via /config");
         } else {
             server.send(400, "text/plain", "Missing parameters");
+            Serial.println("ESP32: /config failed: Missing parameters");
         }
+    });
+
+    server.on("/setWiFi", HTTP_POST, []() {
+        DynamicJsonDocument doc(512);
+        DeserializationError error = deserializeJson(doc, server.arg("plain"));
+        if (error) {
+            Serial.println("ESP32: Failed to parse JSON: " + String(error.c_str()));
+            server.send(400, "application/json", "{\"success\": false, \"error\": \"Invalid JSON\"}");
+            return;
+        }
+        String ssid = doc["ssid"] | "";
+        String password = doc["password"] | "";
+        if (ssid.isEmpty()) {
+            Serial.println("ESP32: SSID is empty");
+            server.send(400, "application/json", "{\"success\": false, \"error\": \"SSID cannot be empty\"}");
+            return;
+        }
+        Serial.println("ESP32: Attempting to connect to WiFi SSID: " + ssid);
+        WiFi.mode(WIFI_STA);
+        WiFi.begin(ssid.c_str(), password.c_str());
+        int attempts = 0;
+        const int maxAttempts = 20;
+        while (WiFi.status() != WL_CONNECTED && attempts < maxAttempts) {
+            delay(500);
+            attempts++;
+            Serial.print(".");
+        }
+        Serial.println();
+        DynamicJsonDocument response(256);
+        if (WiFi.status() == WL_CONNECTED) {
+            String ip = WiFi.localIP().toString();
+            Serial.println("ESP32: Connected to WiFi, IP: " + ip);
+            prefs.begin("wifi", false);
+            prefs.putString("ssid", ssid);
+            prefs.putString("pass", password);
+            prefs.end();
+            isClientConnected = false;
+            displayIPAddress(ip);
+            response["success"] = true;
+            response["ip"] = ip;
+        } else {
+            Serial.println("ESP32: Failed to connect to WiFi, status: " + String(WiFi.status()));
+            WiFi.disconnect();
+            WiFi.mode(WIFI_AP);
+            WiFi.softAP(apSSID, apPassword);
+            Serial.println("ESP32: Reverted to AP mode, IP: 192.168.4.1");
+            displayAPMode();
+            response["success"] = false;
+            response["error"] = "Failed to connect to WiFi";
+        }
+        String responseStr;
+        serializeJson(response, responseStr);
+        server.send(WiFi.status() == WL_CONNECTED ? 200 : 500, "application/json", responseStr);
+    });
+
+    server.on("/disconnect", []() {
+        Serial.println("ESP32: Disconnect requested");
+        prefs.begin("wifi", false);
+        prefs.clear();
+        prefs.end();
+        WiFi.disconnect();
+        delay(500);
+        WiFi.mode(WIFI_AP);
+        WiFi.softAP(apSSID, apPassword);
+        isClientConnected = false;
+        Serial.println("ESP32: Switched to AP mode, IP: 192.168.4.1");
+        displayAPMode();
+        server.send(200, "text/plain", "Disconnected and switched to AP mode");
+    });
+
+    server.on("/restart", []() {
+        server.send(200, "text/plain", "Restarting ESP32...");
+        Serial.println("ESP32: Restart requested");
+        delay(1000);
+        ESP.restart();
     });
 
     server.begin();
     Serial.println("ESP32: HTTP server started");
-}
-
-class ConfigCallbacks : public BLECharacteristicCallbacks {
-    void onWrite(BLECharacteristic* pCharacteristic) {
-        String value = pCharacteristic->getValue().c_str();
-        if (value.startsWith("WIFI:")) {
-            isWiFiMode = true;
-            value.remove(0, 5);
-            int separatorIndex = value.indexOf(':');
-            if (separatorIndex != -1) {
-                String ssid = value.substring(0, separatorIndex);
-                String password = value.substring(separatorIndex + 1);
-                prefs.begin("wifi", false);
-                prefs.putString("ssid", ssid);
-                prefs.putString("pass", password);
-                prefs.end();
-                WiFi.begin(ssid.c_str(), password.c_str());
-                int attempts = 0;
-                while (WiFi.status() != WL_CONNECTED && attempts < 20) {
-                    delay(500);
-                    attempts++;
-                }
-                if (WiFi.status() == WL_CONNECTED) {
-                    String ip = WiFi.localIP().toString();
-                    startWiFiServer();
-                    pConfigCharacteristic->setValue(ip.c_str());
-                    pConfigCharacteristic->notify();
-                    pAdvertising->stop();
-                } else {
-                    pAdvertising->start();
-                }
-            }
-        }
-    }
-};
-
-class ResetCallbacks : public BLECharacteristicCallbacks {
-    void onWrite(BLECharacteristic* pCharacteristic) {
-        String value = pCharacteristic->getValue().c_str();
-        if (value == "RESET") {
-            WiFi.disconnect();
-            isWiFiMode = false;
-            server.close();
-            pAdvertising->start();
-        }
-    }
-};
-
-void switchToBLEMode() {
-    Serial.println("ESP32: Switching to BLE mode...");
-    WiFi.disconnect();
-    delay(500);
-    prefs.begin("wifi", false);
-    prefs.clear();
-    prefs.end();
-    isWiFiMode = false;
-    server.close();
-    delay(500);
-    pAdvertising->start();
-    Serial.println("ESP32: BLE advertising restarted");
-    Serial.println("ESP32: Now in BLE mode, WiFi disabled");
 }
 
 void checkSerialCommand() {
@@ -506,10 +667,47 @@ void checkSerialCommand() {
         String command = Serial.readStringUntil('\n');
         command.trim();
         Serial.print("ESP32: Received command: '"); Serial.print(command); Serial.println("'");
-        if (command.equalsIgnoreCase("RESTART_BLE")) {
-            switchToBLEMode();
+        if (command.equalsIgnoreCase("CLEAR_WIFI")) {
+            Serial.println("ESP32: Clearing WiFi credentials");
+            prefs.begin("wifi", false);
+            prefs.clear();
+            prefs.end();
+            WiFi.disconnect();
+            delay(500);
+            WiFi.mode(WIFI_AP);
+            WiFi.softAP(apSSID, apPassword);
+            isClientConnected = false;
+            Serial.println("ESP32: Switched to AP mode, IP: 192.168.4.1");
+            displayAPMode();
+        } else if (command.equalsIgnoreCase("RESTART_AP")) {
+            Serial.println("ESP32: Restarting in AP mode");
+            prefs.begin("wifi", false);
+            prefs.clear();
+            prefs.end();
+            Serial.println("ESP32: WiFi credentials cleared, restarting...");
+            delay(1000);
+            ESP.restart();
+        } else if (command.equalsIgnoreCase("FORCE_OVERRIDE")) {
+            Serial.println("ESP32: Forcing Manual Override mode");
+            sensorsPowered = false;
+            invalidReadingsActive = true;
+            invalidStartTime = millis();
+            currentTemp = 0.0;
+            currentHumid = 0.0;
+            setLightAndCoolerIntensity(2);
+            setCoolerState(true);
+            updateDisplay(currentTemp, currentHumid, sensorsPowered);
+        } else if (command.equalsIgnoreCase("EXIT_OVERRIDE")) {
+            Serial.println("ESP32: Exiting Manual Override mode");
+            sensorsPowered = true;
+            invalidReadingsActive = false;
+            invalidStartTime = 0;
+            reinitI2C(); // Reinitialize sensors on exit
+            updateDisplay(currentTemp, currentHumid, sensorsPowered);
+        } else if (command.equalsIgnoreCase("REINIT_I2C")) {
+            reinitI2C();
         } else {
-            Serial.println("ESP32: Unknown command. Type 'RESTART_BLE' to switch to BLE mode.");
+            Serial.println("ESP32: Unknown command. Type 'CLEAR_WIFI', 'RESTART_AP', 'FORCE_OVERRIDE', 'EXIT_OVERRIDE', or 'REINIT_I2C'.");
         }
     }
 }
@@ -517,9 +715,9 @@ void checkSerialCommand() {
 void setup() {
     Serial.begin(115200);
     Serial.println("ESP32: Booting up...");
-
     for (int i = 0; i < 5; i++) {
         pinMode(pirPins[i], INPUT);
+        digitalWrite(pirPins[i], LOW);
     }
     pinMode(relay1Pin, OUTPUT);
     pinMode(relay2Pin, OUTPUT);
@@ -530,99 +728,92 @@ void setup() {
     digitalWrite(relay2Pin, HIGH);
     digitalWrite(relay3Pin, LOW);
     digitalWrite(relay4Pin, HIGH);
-    digitalWrite(relayCoolerPin, HIGH);
+    digitalWrite(relayCoolerPin, LOW);
     currentLightIntensity = 2;
     currentCoolerState = true;
     lastLightChange = millis();
     lastCoolerChange = millis();
     Serial.println("ESP32: Pins initialized");
-
     loadPreferences();
-
-    Wire.begin(I2C_SDA, I2C_SCL);
-    if (!aht1.begin(&Wire, 0x38)) Serial.println("ESP32: AHT10 Sensor 1 not found");
-    if (!aht2.begin(&Wire, 0x39)) Serial.println("ESP32: AHT10 Sensor 2 not found");
+    Wire.begin(I2C1_SDA, I2C1_SCL, 50000); // 50kHz for stability
+    Serial.println("ESP32: Initializing AHT10 Sensor 1...");
+    if (!aht1.begin(&Wire, 0x38)) {
+        Serial.println("ESP32: AHT10 Sensor 1 not found at 0x38 (I2C1: SDA=21, SCL=22)");
+    } else {
+        Serial.println("ESP32: AHT10 Sensor 1 found at 0x38 (I2C1: SDA=21, SCL=22)");
+    }
+    Wire1.begin(I2C2_SDA, I2C2_SCL, 50000);
+    Serial.println("ESP32: Initializing AHT10 Sensor 2...");
+    if (!aht2.begin(&Wire1, 0x38)) {
+        Serial.println("ESP32: AHT10 Sensor 2 not found at 0x38 (I2C2: SDA=26, SCL=27)");
+    } else {
+        Serial.println("ESP32: AHT10 Sensor 2 found at 0x38 (I2C2: SDA=26, SCL=27)");
+    }
     Serial.println("ESP32: I2C sensors initialized");
-
-    lcd.init();
-    lcd.backlight();
-    Wire.beginTransmission(LCD_I2C_ADDRESS);
-    lcdActive = (Wire.endTransmission() == 0);
-    Serial.println("ESP32: LCD initialized, Active: " + String(lcdActive ? "Yes" : "No"));
-
+    lcdActive = initLCD();
     prefs.begin("wifi", false);
     String ssid = prefs.getString("ssid", "");
     String pass = prefs.getString("pass", "");
-
+    prefs.end();
     if (ssid.length() > 0 && pass.length() > 0) {
+        Serial.println("ESP32: Attempting to connect to saved WiFi SSID: " + ssid);
+        WiFi.mode(WIFI_STA);
         WiFi.begin(ssid.c_str(), pass.c_str());
         int attempts = 0;
-        while (WiFi.status() != WL_CONNECTED && attempts < 20) {
+        const int maxAttempts = 20;
+        while (WiFi.status() != WL_CONNECTED && attempts < maxAttempts) {
             delay(500);
+            Serial.print(".");
             attempts++;
         }
+        Serial.println();
         if (WiFi.status() == WL_CONNECTED) {
-            isWiFiMode = true;
+            String ip = WiFi.localIP().toString();
+            Serial.println("ESP32: WiFi connected, IP: " + ip);
+            displayIPAddress(ip);
             startWiFiServer();
-            Serial.println("ESP32: WiFi connected");
         } else {
-            Serial.println("ESP32: WiFi connection failed");
-            isWiFiMode = false;
-            pAdvertising->start();
-            Serial.println("ESP32: Starting in BLE mode due to WiFi failure");
+            Serial.println("ESP32: Failed to connect to saved WiFi, starting AP mode");
+            WiFi.disconnect();
+            WiFi.mode(WIFI_AP);
+            WiFi.softAP(apSSID, apPassword);
+            Serial.println("ESP32: AP mode started, IP: 192.168.4.1");
+            displayAPMode();
+            startWiFiServer();
         }
     } else {
-        Serial.println("ESP32: No WiFi credentials found, starting in BLE mode");
+        Serial.println("ESP32: No WiFi credentials found, starting AP mode");
+        WiFi.mode(WIFI_AP);
+        WiFi.softAP(apSSID, apPassword);
+        Serial.println("ESP32: AP mode started, IP: 192.168.4.1");
+        displayAPMode();
+        startWiFiServer();
     }
-
-    BLEDevice::init("ESP32_PIR_Sensor");
-    BLEServer* pServer = BLEDevice::createServer();
-    BLEService* pService = pServer->createService(SERVICE_UUID);
-
-    pConfigCharacteristic = pService->createCharacteristic(
-            CONFIG_CHAR_UUID,
-            BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY
-    );
-    pConfigCharacteristic->addDescriptor(new BLE2902());
-    pConfigCharacteristic->setCallbacks(new ConfigCallbacks());
-
-    pResetCharacteristic = pService->createCharacteristic(
-            RESET_CHAR_UUID,
-            BLECharacteristic::PROPERTY_WRITE
-    );
-    pResetCharacteristic->setCallbacks(new ResetCallbacks());
-
-    pService->start();
-    pAdvertising = BLEDevice::getAdvertising();
-    if (!isWiFiMode) {
-        pAdvertising->start();
-        Serial.println("ESP32: BLE advertising started");
-    }
-
     updateSensorValues();
     handleRelayAndPIR();
     updateDisplay(currentTemp, currentHumid, sensorsPowered);
-    Serial.println("ESP32: Setup complete. Type 'RESTART_BLE' in Serial Monitor to force BLE mode.");
+    Serial.println("ESP32: Setup complete. Type 'CLEAR_WIFI', 'RESTART_AP', 'FORCE_OVERRIDE', 'EXIT_OVERRIDE', or 'REINIT_I2C' in Serial Monitor.");
 }
 
 void loop() {
     static unsigned long lastUpdate = 0;
     const unsigned long updateInterval = 1000;
-
     unsigned long currentTime = millis();
     if (currentTime - lastUpdate >= updateInterval) {
         updateSensorValues();
         handleRelayAndPIR();
-        updateDisplay(currentTemp, currentHumid, sensorsPowered);
+        if (WiFi.getMode() == WIFI_STA && WiFi.status() == WL_CONNECTED && !isClientConnected) {
+            displayIPAddress(WiFi.localIP().toString());
+            Serial.println("ESP32: Displaying IP, waiting for app connection");
+        } else {
+            updateDisplay(currentTemp, currentHumid, sensorsPowered);
+        }
         lastUpdate = currentTime;
-        Serial.println("ESP32: Loop running, sensorsPowered: " + String(sensorsPowered) + ", Mode: " + (isWiFiMode ? "WiFi" : "BLE"));
+        Serial.println("ESP32: Loop running, sensorsPowered: " + String(sensorsPowered) + ", WiFi Mode: " + (WiFi.getMode() == WIFI_AP ? "AP" : "STA") + ", isClientConnected: " + String(isClientConnected));
         Serial.flush();
     }
-
-    if (isWiFiMode) server.handleClient();
-
+    server.handleClient();
     checkSerialCommand();
-
     if (!Serial) {
         Serial.println("ESP32: Serial disconnected, attempting to reinitialize...");
         Serial.end();
