@@ -225,7 +225,7 @@ void updateDisplay(float temp, float humid, bool sensorsOn) {
     lcd.clear();
     lcd.setCursor(0, 0);
     if (sensorsOn) {
-        lcd.print("Temp: "); lcd.print(temp, 1); lcd.print("°C");
+        lcd.print("Temp: "); lcd.print(temp, 1); lcd.print("\337C");
         lcd.setCursor(0, 1);
         lcd.print("Humid: "); lcd.print(humid, 1); lcd.print("%");
         lcd.setCursor(0, 2);
