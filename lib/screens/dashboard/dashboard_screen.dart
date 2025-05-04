@@ -5,6 +5,7 @@ import 'package:smart_lighting/common/widgets/systemStatus/humidityStatus/humidi
 import 'package:smart_lighting/common/widgets/systemStatus/sensorsStatus/sensors_status.dart';
 import 'package:smart_lighting/common/widgets/drawer/drawer.dart';
 import 'package:provider/provider.dart';
+import 'package:animate_do/animate_do.dart';
 
 class Home extends StatefulWidget {
   const Home({super.key});
@@ -33,7 +34,6 @@ class _HomeState extends State<Home> {
       drawer: DrawerWidget(authService: AuthService()),
       body: Consumer<ESP32Service>(
         builder: (context, esp32Service, child) {
-          // Show SnackBars in a post-frame callback
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (!mounted) return;
 
@@ -63,7 +63,6 @@ class _HomeState extends State<Home> {
               _hasShownSensorsOff = false;
             }
 
-            // Cooler recommendation SnackBar
             if (!esp32Service.coolerEnabled &&
                 (esp32Service.temperature > esp32Service.tempThreshold ||
                     esp32Service.humidity > esp32Service.humidThreshold) &&
@@ -105,27 +104,29 @@ class _HomeState extends State<Home> {
             );
           }
 
-          return SingleChildScrollView(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 20.0, horizontal: 10.0),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.start,
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  TemperatureStatus(
-                    temperature: esp32Service.temperature,
-                    isActive: esp32Service.isSensorsOn,
-                    isManualOverride: esp32Service.isManualOverride,
-                  ),
-                  const SizedBox(height: 10),
-                  HumidityStatus(
-                    humidity: esp32Service.humidity,
-                    isActive: esp32Service.isSensorsOn,
-                    isManualOverride: esp32Service.isManualOverride,
-                  ),
-                  const SizedBox(height: 10),
-                  _buildSensorsStatusGrid(esp32Service),
-                ],
+          return FadeIn(
+            child: SingleChildScrollView(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 20.0, horizontal: 10.0),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.start,
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    TemperatureStatus(
+                      temperature: esp32Service.temperature,
+                      isActive: esp32Service.isSensorsOn,
+                      isManualOverride: esp32Service.isManualOverride,
+                    ),
+                    const SizedBox(height: 10),
+                    HumidityStatus(
+                      humidity: esp32Service.humidity,
+                      isActive: esp32Service.isSensorsOn,
+                      isManualOverride: esp32Service.isManualOverride,
+                    ),
+                    const SizedBox(height: 10),
+                    _buildSensorsStatusGrid(esp32Service),
+                  ],
+                ),
               ),
             ),
           );
@@ -161,7 +162,7 @@ class _HomeState extends State<Home> {
             width: 170,
             height: 200,
             title: 'PIR SENSORS',
-            subtitle: 'Motion Detection (5 Sensors)', // Updated subtitle
+            subtitle: 'Motion Detection (5 Sensors)',
             isActive: esp32Service.isSensorsOn && esp32Service.pirEnabled,
             isManualOverride: esp32Service.isManualOverride,
           ),

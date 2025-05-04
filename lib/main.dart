@@ -6,6 +6,7 @@ import 'package:smart_lighting/screens/login/login_screen.dart';
 import 'package:smart_lighting/screens/dashboard/dashboard_screen.dart';
 import 'package:smart_lighting/screens/verification/verify_email_screen.dart';
 import 'package:smart_lighting/screens/onboarding/onboarding_screen.dart';
+import 'package:smart_lighting/screens/setup/setup_screen.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -55,6 +56,18 @@ class _MyAppState extends State<MyApp> {
         debugShowCheckedModeBanner: false,
         theme: ThemeData(
           primarySwatch: Colors.blue,
+          colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
+          useMaterial3: true,
+          cardTheme: CardTheme(
+            elevation: 2,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+          elevatedButtonTheme: ElevatedButtonThemeData(
+            style: ElevatedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+          ),
         ),
         home: WillPopScope(
           onWillPop: _onWillPop,
@@ -86,14 +99,11 @@ class _MyAppState extends State<MyApp> {
     final now = DateTime.now();
     const maxDuration = Duration(seconds: 2);
 
-    // Check if a back button press occurred recently
     if (_lastBackPressed != null &&
         now.difference(_lastBackPressed!) <= maxDuration) {
-      // Double-tap detected, exit to home screen
-      _lastBackPressed = null; // Reset the timer
-      return true; // Allow the app to exit
+      _lastBackPressed = null;
+      return true;
     } else {
-      // Single tap, show toast and set the last pressed time
       _lastBackPressed = now;
       Fluttertoast.showToast(
         msg: "Press back again to exit",
@@ -103,13 +113,12 @@ class _MyAppState extends State<MyApp> {
         textColor: Colors.white,
         fontSize: 14.0,
       );
-      return false; // Prevent default back navigation
+      return false;
     }
   }
 
   Future<bool> _checkOnboardingStatus() async {
     final prefs = await SharedPreferences.getInstance();
-    // await prefs.clear(); // Only for testing. Comment out or remove in production.
     return prefs.getBool('hasSeenOnboarding') ?? false;
   }
 }
@@ -160,17 +169,20 @@ class AuthWrapper extends StatelessWidget {
               return const Login();
             }
 
-            if (user.emailVerified) {
-              print(
-                  "User ${user.email ?? 'unknown'} signed in, email verified");
-              return const Home();
-            } else {
+            if (!user.emailVerified) {
               print(
                   "User ${user.email ?? 'unknown'} signed in, email not verified");
               return user.email != null
                   ? VerifyEmailScreen(email: user.email!)
                   : const Login();
             }
+
+            final esp32Service = Provider.of<ESP32Service>(context);
+            print(
+                "User ${user.email ?? 'unknown'} signed in, email verified, isConnected: ${esp32Service.isConnected}, esp32IP: ${esp32Service.esp32IP}");
+            return esp32Service.isConnected
+                ? const Home()
+                : const SetupScreen();
           },
         );
       },
