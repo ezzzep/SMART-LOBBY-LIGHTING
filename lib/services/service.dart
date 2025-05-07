@@ -393,7 +393,7 @@ class ESP32Service extends ChangeNotifier {
   bool _pirEnabled = true;
   int _lightIntensity = 2;
   bool _coolerEnabled = true;
-  bool _allowOffMode = false;
+  bool _sensorBasedLightControl = true;
 
   bool get pirSensorActive => _pirSensorActive;
   List<String> get pirStatuses => _pirStatuses;
@@ -412,7 +412,7 @@ class ESP32Service extends ChangeNotifier {
   bool get pirEnabled => _pirEnabled;
   int get lightIntensity => _lightIntensity;
   bool get coolerEnabled => _coolerEnabled;
-  bool get allowOffMode => _allowOffMode;
+  bool get sensorBasedLightControl => _sensorBasedLightControl;
 
   set pirSensorActive(bool value) {
     _pirSensorActive = value;
@@ -452,11 +452,22 @@ class ESP32Service extends ChangeNotifier {
 
   set isAutoMode(bool value) {
     _isAutoMode = value;
+    if (value) {
+      _pirEnabled = false; // PIR disabled in auto mode
+      _tempThreshold = 32; // Reset to ESP32 default
+      _humidThreshold = 65; // Reset to ESP32 default
+      _lightIntensity = 2; // Reset to ESP32 default
+      _coolerEnabled = true; // Reset to ESP32 default
+      _sensorBasedLightControl = true; // Sensor-based control in auto mode
+    }
     _notifyWithDebounce();
   }
 
   set isManualOverride(bool value) {
     _isManualOverride = value;
+    if (!value) {
+      _sensorBasedLightControl = true; // Reset to sensor-based control
+    }
     _notifyWithDebounce();
   }
 
@@ -481,6 +492,10 @@ class ESP32Service extends ChangeNotifier {
   }
 
   set pirEnabled(bool value) {
+    if (_isAutoMode) {
+      Fluttertoast.showToast(msg: "PIR sensor is disabled in Auto mode");
+      return;
+    }
     _pirEnabled = value;
     _notifyWithDebounce();
   }
@@ -495,8 +510,8 @@ class ESP32Service extends ChangeNotifier {
     _notifyWithDebounce();
   }
 
-  set allowOffMode(bool value) {
-    _allowOffMode = value;
+  set sensorBasedLightControl(bool value) {
+    _sensorBasedLightControl = value;
     _notifyWithDebounce();
   }
 
@@ -629,9 +644,7 @@ class ESP32Service extends ChangeNotifier {
         if (response.statusCode == 200) {
           Fluttertoast.showToast(msg: "ESP32 disconnected and switched to AP mode");
         }
-      } catch (e) {
-
-      }
+      } catch (e) {}
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove('esp32IP');
       esp32IP = null;
@@ -646,6 +659,7 @@ class ESP32Service extends ChangeNotifier {
       humidity = 0.0;
       relayStatus = "HIGH";
       coolerStatus = "ON";
+      _sensorBasedLightControl = true;
       _notifyWithDebounce();
     }
   }
@@ -662,6 +676,8 @@ class ESP32Service extends ChangeNotifier {
       _sensorOffCount = 0;
       relayStatus = "HIGH";
       coolerStatus = coolerEnabled ? "ON" : "OFF";
+      pirEnabled = false;
+      _sensorBasedLightControl = true;
     } else {
       isSensorsOn = true;
     }
@@ -682,6 +698,7 @@ class ESP32Service extends ChangeNotifier {
         if (pirStatus == "DISABLED") {
           pirSensorActive = false;
           pirStatuses = List.filled(5, "NO MOTION");
+          pirEnabled = false;
         } else {
           List<String> pirStates = pirStatus.split(",");
           List<String> newStatuses = List.filled(5, "NO MOTION");
@@ -701,9 +718,18 @@ class ESP32Service extends ChangeNotifier {
         if (mode == "MANUAL_OVERRIDE") {
           isManualOverride = true;
           isAutoMode = false;
+          _sensorBasedLightControl = true;
         } else {
           isManualOverride = false;
           isAutoMode = mode == "AUTO";
+          if (isAutoMode) {
+            pirEnabled = false;
+            tempThreshold = 32;
+            humidThreshold = 65;
+            lightIntensity = 2;
+            coolerEnabled = true;
+            _sensorBasedLightControl = true;
+          }
         }
       } else if (part.startsWith("RELAYS:")) {
         relayStatus = part.split(":")[1];
@@ -722,12 +748,20 @@ class ESP32Service extends ChangeNotifier {
         pirStatuses = List.filled(5, "NO MOTION");
         relayStatus = "HIGH";
         coolerStatus = coolerEnabled ? "ON" : "OFF";
+        pirEnabled = false;
+        _sensorBasedLightControl = true;
       }
     } else if (temperature > 0.0 || humidity > 0.0) {
       _sensorOffCount = 0;
       if (isManualOverride && relayStatus != "HIGH") {
         isManualOverride = false;
         isAutoMode = true;
+        pirEnabled = false;
+        tempThreshold = 32;
+        humidThreshold = 65;
+        lightIntensity = 2;
+        coolerEnabled = true;
+        _sensorBasedLightControl = true;
       }
     }
     _notifyWithDebounce();
@@ -740,12 +774,18 @@ class ESP32Service extends ChangeNotifier {
     required int lightIntensity,
     required bool isAutoMode,
     required bool coolerEnabled,
-    required bool allowOffMode,
+    required bool sensorBasedLightControl,
   }) async {
     if (esp32IP == null || !isConnected) throw Exception("ESP32 not connected");
     if (isManualOverride) {
       Fluttertoast.showToast(msg: "Cannot update config in Manual Override Mode");
-      return;
+      throw Exception("Cannot update config in Manual Override Mode");
+    }
+
+    // Enforce PIR disabled in auto mode
+    bool effectivePirEnabled = isAutoMode ? false : pirEnabled;
+    if (isAutoMode && pirEnabled) {
+      Fluttertoast.showToast(msg: "PIR is disabled in Auto mode");
     }
 
     try {
@@ -754,22 +794,22 @@ class ESP32Service extends ChangeNotifier {
         body: {
           'tempThreshold': tempThreshold.toString(),
           'humidThreshold': humidThreshold.toString(),
-          'pirEnabled': pirEnabled.toString(),
+          'pirEnabled': effectivePirEnabled.toString(),
           'lightIntensity': lightIntensity.toString(),
           'isAutoMode': isAutoMode.toString(),
           'coolerEnabled': coolerEnabled.toString(),
-          'allowOffMode': allowOffMode.toString(),
+          'sensorBasedLightControl': sensorBasedLightControl.toString(),
         },
       );
 
       if (response.statusCode == 200) {
         this.tempThreshold = tempThreshold;
         this.humidThreshold = humidThreshold;
-        this.pirEnabled = pirEnabled;
+        this.pirEnabled = effectivePirEnabled;
         this.lightIntensity = lightIntensity;
         this.isAutoMode = isAutoMode;
         this.coolerEnabled = coolerEnabled;
-        this.allowOffMode = allowOffMode;
+        this._sensorBasedLightControl = sensorBasedLightControl;
         Fluttertoast.showToast(msg: "Configuration updated on ESP32");
       } else {
         throw Exception('Failed to send config: ${response.statusCode}');
@@ -777,7 +817,7 @@ class ESP32Service extends ChangeNotifier {
     } catch (e) {
       Fluttertoast.showToast(msg: "Failed to update configuration: $e");
       await _syncWithESP32();
-      throw e;
+      throw Exception("Failed to update configuration: $e");
     }
   }
 

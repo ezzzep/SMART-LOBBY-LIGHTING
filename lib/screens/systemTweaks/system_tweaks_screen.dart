@@ -17,7 +17,6 @@ class _SystemTweaksState extends State<SystemTweaks>
   double _lightIntensity = 2;
   bool _isPirSensorOn = true;
   bool _isCoolerOn = true;
-  bool _allowOffMode = false; // Added to match ESP32
 
   bool _isEditingThreshold = false;
   bool _isEditingLightIntensity = false;
@@ -38,7 +37,6 @@ class _SystemTweaksState extends State<SystemTweaks>
     _lightIntensity = esp32Service.lightIntensity.toDouble();
     _isPirSensorOn = esp32Service.pirEnabled;
     _isCoolerOn = esp32Service.coolerEnabled;
-    _allowOffMode = esp32Service.allowOffMode;
 
     _tempController =
         FixedExtentScrollController(initialItem: _tempThreshold - 30);
@@ -65,7 +63,7 @@ class _SystemTweaksState extends State<SystemTweaks>
     super.dispose();
   }
 
-  Future<void> _sendConfigToESP32(ESP32Service esp32Service) async {
+  Future<void> _sendConfigToESP32(ESP32Service esp32Service, {required bool sensorBasedLightControl}) async {
     try {
       await esp32Service.sendConfigToESP32(
         tempThreshold: _tempThreshold,
@@ -74,13 +72,46 @@ class _SystemTweaksState extends State<SystemTweaks>
         lightIntensity: _lightIntensity.toInt(),
         isAutoMode: esp32Service.isAutoMode,
         coolerEnabled: _isCoolerOn,
-        allowOffMode: _allowOffMode,
+        sensorBasedLightControl: sensorBasedLightControl,
+      );
+      if (!_isEditingLightIntensity && sensorBasedLightControl) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Settings saved, lights controlled by sensors'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to save config: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  Future<void> _updateLightIntensity(double value, ESP32Service esp32Service) async {
+    setState(() {
+      _lightIntensity = value;
+    });
+    try {
+      await esp32Service.sendConfigToESP32(
+        tempThreshold: _tempThreshold,
+        humidThreshold: _humidThreshold,
+        pirEnabled: _isPirSensorOn,
+        lightIntensity: _lightIntensity.toInt(),
+        isAutoMode: esp32Service.isAutoMode,
+        coolerEnabled: _isCoolerOn,
+        sensorBasedLightControl: false, // Direct control during edit
       );
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-            content: Text('Failed to save config: $e'),
-            backgroundColor: Colors.red),
+          content: Text('Failed to update light intensity: $e'),
+          backgroundColor: Colors.red,
+        ),
       );
     }
   }
@@ -91,8 +122,7 @@ class _SystemTweaksState extends State<SystemTweaks>
             esp32Service.humidity > esp32Service.humidThreshold)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content:
-              Text("Temperature and humidity are high, turn on the cooler"),
+          content: Text("Temperature or humidity high, turn on the cooler"),
           backgroundColor: Colors.orange,
           duration: Duration(seconds: 5),
         ),
@@ -127,7 +157,6 @@ class _SystemTweaksState extends State<SystemTweaks>
               _buildAnimatedLightIntensitySlider(esp32Service),
               const SizedBox(height: 15),
               _buildAnimatedToggleSwitches(esp32Service),
-              const SizedBox(height: 20),
             ],
           ),
         ),
@@ -153,8 +182,9 @@ class _SystemTweaksState extends State<SystemTweaks>
         if (esp32Service.isManualOverride) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-                content: Text('Cannot change mode in Manual Override'),
-                backgroundColor: Colors.orange),
+              content: Text('Cannot change mode in Manual Override'),
+              backgroundColor: Colors.orange,
+            ),
           );
           return;
         }
@@ -164,17 +194,17 @@ class _SystemTweaksState extends State<SystemTweaks>
           if (newMode) {
             _isEditingThreshold = false;
             _isEditingLightIntensity = false;
-            _isPirSensorOn = true;
+            _isPirSensorOn = false; // PIR disabled in auto mode
             _isCoolerOn = true;
-            _allowOffMode = false;
-            _tempThreshold = esp32Service.tempThreshold;
-            _humidThreshold = esp32Service.humidThreshold;
+            _tempThreshold = 32; // ESP32 default
+            _humidThreshold = 65; // ESP32 default
+            _lightIntensity = 2; // ESP32 default in auto mode
             _tempController.jumpToItem(_tempThreshold - 30);
             _humidController.jumpToItem(_humidThreshold - 60);
           }
           _animationController.forward(from: 0.0);
         });
-        await _sendConfigToESP32(esp32Service);
+        await _sendConfigToESP32(esp32Service, sensorBasedLightControl: true);
       },
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
@@ -201,9 +231,10 @@ class _SystemTweaksState extends State<SystemTweaks>
                       ? "OVERRIDE"
                       : (esp32Service.isAutoMode ? "AUTO" : "MANUAL"),
                   style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16),
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
                 ),
               ),
             ),
@@ -215,7 +246,9 @@ class _SystemTweaksState extends State<SystemTweaks>
                 width: 25,
                 height: 25,
                 decoration: const BoxDecoration(
-                    shape: BoxShape.circle, color: Colors.white),
+                  shape: BoxShape.circle,
+                  color: Colors.white,
+                ),
                 child: Center(
                   child: Text(
                     esp32Service.isManualOverride
@@ -227,8 +260,8 @@ class _SystemTweaksState extends State<SystemTweaks>
                       color: esp32Service.isManualOverride
                           ? Colors.orange
                           : (esp32Service.isAutoMode
-                              ? Color.fromRGBO(83, 166, 234, 1)
-                              : Colors.grey),
+                          ? Color.fromRGBO(83, 166, 234, 1)
+                          : Colors.grey),
                     ),
                   ),
                 ),
@@ -268,8 +301,8 @@ class _SystemTweaksState extends State<SystemTweaks>
                         !_isEditingThreshold,
                     child: Opacity(
                       opacity: (esp32Service.isAutoMode ||
-                              esp32Service.isManualOverride ||
-                              !_isEditingThreshold)
+                          esp32Service.isManualOverride ||
+                          !_isEditingThreshold)
                           ? 0.5
                           : 1.0,
                       child: Column(
@@ -279,9 +312,10 @@ class _SystemTweaksState extends State<SystemTweaks>
                             child: const Text(
                               'SENSITIVITY THRESHOLD',
                               style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 18,
-                                  color: Colors.white),
+                                fontWeight: FontWeight.bold,
+                                fontSize: 18,
+                                color: Colors.white,
+                              ),
                               textAlign: TextAlign.center,
                             ),
                           ),
@@ -315,12 +349,12 @@ class _SystemTweaksState extends State<SystemTweaks>
                       ),
                     ),
                   ),
-                  if (!esp32Service.isAutoMode &&
-                      !esp32Service.isManualOverride)
+                  if (!esp32Service.isAutoMode && !esp32Service.isManualOverride)
                     Positioned(
-                        top: 0,
-                        right: 0,
-                        child: _buildThresholdButton(esp32Service)),
+                      top: 0,
+                      right: 0,
+                      child: _buildThresholdButton(esp32Service),
+                    ),
                 ],
               ),
             ),
@@ -341,19 +375,23 @@ class _SystemTweaksState extends State<SystemTweaks>
   }) {
     return Column(
       children: [
-        Text(label,
-            style: const TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 16,
-                color: Colors.white)),
+        Text(
+          label,
+          style: const TextStyle(
+            fontWeight: FontWeight.bold,
+            fontSize: 16,
+            color: Colors.white,
+          ),
+        ),
         const SizedBox(height: 10),
         Container(
           width: 120,
           height: 103,
           decoration: BoxDecoration(
-              border: Border.all(color: Colors.black),
-              borderRadius: BorderRadius.circular(8),
-              color: Colors.white54),
+            border: Border.all(color: Colors.black),
+            borderRadius: BorderRadius.circular(8),
+            color: Colors.white54,
+          ),
           child: ListWheelScrollView.useDelegate(
             itemExtent: 40,
             perspective: 0.002,
@@ -368,14 +406,18 @@ class _SystemTweaksState extends State<SystemTweaks>
                   duration: const Duration(milliseconds: 200),
                   curve: Curves.easeOut,
                   transform: Matrix4.translationValues(
-                      isSelected ? 0 : (index < value - min ? -5 : 5), 0, 0),
+                    isSelected ? 0 : (index < value - min ? -5 : 5),
+                    0,
+                    0,
+                  ),
                   child: Center(
                     child: Text(
                       '${min + index}$suffix',
                       style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: isSelected ? Colors.red : Colors.black),
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: isSelected ? Colors.red : Colors.black,
+                      ),
                     ),
                   ),
                 );
@@ -398,10 +440,14 @@ class _SystemTweaksState extends State<SystemTweaks>
             _isEditingThreshold = !_isEditingThreshold;
             _animationController.forward(from: 0.0);
           });
-          if (!_isEditingThreshold) await _sendConfigToESP32(esp32Service);
+          if (!_isEditingThreshold) {
+            await _sendConfigToESP32(esp32Service, sensorBasedLightControl: esp32Service.sensorBasedLightControl);
+          }
         },
-        icon: Icon(_isEditingThreshold ? Icons.save : Icons.edit,
-            color: Colors.black),
+        icon: Icon(
+          _isEditingThreshold ? Icons.save : Icons.edit,
+          color: Colors.black,
+        ),
       ),
     );
   }
@@ -419,9 +465,10 @@ class _SystemTweaksState extends State<SystemTweaks>
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
                 gradient: const LinearGradient(
-                    colors: [Colors.red, Colors.yellow],
-                    begin: Alignment.bottomLeft,
-                    end: Alignment.topRight),
+                  colors: [Colors.red, Colors.yellow],
+                  begin: Alignment.bottomLeft,
+                  end: Alignment.topRight,
+                ),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Stack(
@@ -433,8 +480,8 @@ class _SystemTweaksState extends State<SystemTweaks>
                         !_isEditingLightIntensity,
                     child: Opacity(
                       opacity: (esp32Service.isAutoMode ||
-                              esp32Service.isManualOverride ||
-                              !_isEditingLightIntensity)
+                          esp32Service.isManualOverride ||
+                          !_isEditingLightIntensity)
                           ? 0.5
                           : 1.0,
                       child: Column(
@@ -444,9 +491,10 @@ class _SystemTweaksState extends State<SystemTweaks>
                             child: const Text(
                               'LIGHT CIRCUITS INTENSITY',
                               style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 18,
-                                  color: Colors.white),
+                                fontWeight: FontWeight.bold,
+                                fontSize: 18,
+                                color: Colors.white,
+                              ),
                               textAlign: TextAlign.center,
                             ),
                           ),
@@ -459,23 +507,21 @@ class _SystemTweaksState extends State<SystemTweaks>
                             activeColor: _lightIntensity == 0
                                 ? Colors.white
                                 : _lightIntensity == 1
-                                    ? Colors.yellow
-                                    : Colors.red,
+                                ? Colors.yellow
+                                : Colors.red,
                             inactiveColor: Colors.black26,
                             onChanged: esp32Service.isAutoMode ||
-                                    esp32Service.isManualOverride ||
-                                    !_isEditingLightIntensity
+                                esp32Service.isManualOverride ||
+                                !_isEditingLightIntensity
                                 ? null
-                                : (value) =>
-                                    setState(() => _lightIntensity = value),
+                                : (value) => _updateLightIntensity(value, esp32Service),
                           ),
                           const SizedBox(height: 3),
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
                               _buildLightIntensityLabel("OFF", 0, Colors.white),
-                              _buildLightIntensityLabel(
-                                  "LOW", 1, Colors.yellow),
+                              _buildLightIntensityLabel("LOW", 1, Colors.yellow),
                               _buildLightIntensityLabel("HIGH", 2, Colors.red),
                             ],
                           ),
@@ -483,31 +529,28 @@ class _SystemTweaksState extends State<SystemTweaks>
                       ),
                     ),
                   ),
-                  if (!esp32Service.isAutoMode &&
-                      !esp32Service.isManualOverride)
+                  if (!esp32Service.isAutoMode && !esp32Service.isManualOverride)
                     Positioned(
                       top: 0,
                       right: 0,
                       child: AnimatedContainer(
                         duration: const Duration(milliseconds: 600),
                         curve: Curves.easeInOut,
-                        transform: Matrix4.identity()
-                          ..scale(_isEditingLightIntensity ? 1.0 : 1.1),
+                        transform: Matrix4.identity()..scale(_isEditingLightIntensity ? 1.0 : 1.1),
                         child: IconButton(
                           onPressed: () async {
                             setState(() {
-                              _isEditingLightIntensity =
-                                  !_isEditingLightIntensity;
+                              _isEditingLightIntensity = !_isEditingLightIntensity;
                               _animationController.forward(from: 0.0);
                             });
-                            if (!_isEditingLightIntensity)
-                              await _sendConfigToESP32(esp32Service);
+                            if (!_isEditingLightIntensity) {
+                              await _sendConfigToESP32(esp32Service, sensorBasedLightControl: true);
+                            }
                           },
                           icon: Icon(
-                              _isEditingLightIntensity
-                                  ? Icons.save
-                                  : Icons.edit,
-                              color: Colors.black),
+                            _isEditingLightIntensity ? Icons.save : Icons.edit,
+                            color: Colors.black,
+                          ),
                         ),
                       ),
                     ),
@@ -524,9 +567,10 @@ class _SystemTweaksState extends State<SystemTweaks>
     return Text(
       text,
       style: TextStyle(
-          color: _lightIntensity == value ? color : Colors.white70,
-          fontSize: 16,
-          fontWeight: FontWeight.bold),
+        color: _lightIntensity == value ? color : Colors.white70,
+        fontSize: 16,
+        fontWeight: FontWeight.bold,
+      ),
     );
   }
 
@@ -542,17 +586,15 @@ class _SystemTweaksState extends State<SystemTweaks>
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
                 _buildToggleBox("COOLER", _isCoolerOn, (value) async {
-                  if (!esp32Service.isAutoMode &&
-                      !esp32Service.isManualOverride) {
+                  if (!esp32Service.isAutoMode && !esp32Service.isManualOverride) {
                     setState(() => _isCoolerOn = value);
-                    await _sendConfigToESP32(esp32Service);
+                    await _sendConfigToESP32(esp32Service, sensorBasedLightControl: esp32Service.sensorBasedLightControl);
                   }
                 }, esp32Service),
                 _buildToggleBox("PIR SENSOR", _isPirSensorOn, (value) async {
-                  if (!esp32Service.isAutoMode &&
-                      !esp32Service.isManualOverride) {
+                  if (!esp32Service.isAutoMode && !esp32Service.isManualOverride) {
                     setState(() => _isPirSensorOn = value);
-                    await _sendConfigToESP32(esp32Service);
+                    await _sendConfigToESP32(esp32Service, sensorBasedLightControl: esp32Service.sensorBasedLightControl);
                   }
                 }, esp32Service),
               ],
@@ -563,10 +605,9 @@ class _SystemTweaksState extends State<SystemTweaks>
     );
   }
 
-  Widget _buildToggleBox(String label, bool value, Function(bool) onChanged,
-      ESP32Service esp32Service) {
-    bool isEditable =
-        !esp32Service.isManualOverride && !esp32Service.isAutoMode;
+  Widget _buildToggleBox(String label, bool value, Function(bool) onChanged, ESP32Service esp32Service) {
+    bool isEditable = !esp32Service.isManualOverride &&
+        !(esp32Service.isAutoMode && label == "PIR SENSOR");
     return Container(
       width: 165,
       height: 140,
@@ -575,7 +616,7 @@ class _SystemTweaksState extends State<SystemTweaks>
         borderRadius: BorderRadius.circular(8),
         color: Colors.white,
         boxShadow: [
-          BoxShadow(color: Colors.black26, blurRadius: 1, spreadRadius: 1)
+          BoxShadow(color: Colors.black26, blurRadius: 1, spreadRadius: 1),
         ],
       ),
       child: Column(
@@ -595,41 +636,47 @@ class _SystemTweaksState extends State<SystemTweaks>
               height: 40,
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(20),
-                color: value ? Colors.green : Colors.red,
+                color: isEditable
+                    ? (value ? Colors.green : Colors.red)
+                    : Colors.grey,
               ),
               padding: const EdgeInsets.symmetric(horizontal: 5),
               child: Stack(
                 alignment: Alignment.center,
                 children: [
                   Align(
-                    alignment:
-                        value ? Alignment.centerLeft : Alignment.centerRight,
+                    alignment: value ? Alignment.centerLeft : Alignment.centerRight,
                     child: Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 10),
                       child: Text(
                         value ? "ON" : "OFF",
                         style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16),
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
                       ),
                     ),
                   ),
                   Align(
-                    alignment:
-                        value ? Alignment.centerRight : Alignment.centerLeft,
+                    alignment: value ? Alignment.centerRight : Alignment.centerLeft,
                     child: Container(
                       width: 25,
                       height: 25,
                       decoration: const BoxDecoration(
-                          shape: BoxShape.circle, color: Colors.white),
+                        shape: BoxShape.circle,
+                        color: Colors.white,
+                      ),
                       child: Center(
                         child: Text(
                           value ? "✔" : "✖",
                           style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                              color: value ? Colors.green : Colors.red),
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: isEditable
+                                ? (value ? Colors.green : Colors.red)
+                                : Colors.grey,
+                          ),
                         ),
                       ),
                     ),
@@ -644,7 +691,9 @@ class _SystemTweaksState extends State<SystemTweaks>
             child: Text(
               esp32Service.isManualOverride
                   ? "Manual Override"
-                  : (esp32Service.isAutoMode ? "Controlled by Auto" : ""),
+                  : (esp32Service.isAutoMode && label == "PIR SENSOR"
+                  ? "Disabled in Auto"
+                  : (esp32Service.isAutoMode ? "Controlled by Auto" : "")),
               style: const TextStyle(fontSize: 12, color: Colors.grey),
               textAlign: TextAlign.center,
             ),
