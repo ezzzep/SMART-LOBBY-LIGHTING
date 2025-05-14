@@ -18,6 +18,7 @@ class _SignupState extends State<Signup> {
   bool _obscurePassword = true;
   String? _emailError;
   String? _passwordError;
+  String? _role;
   final AuthService _authService = AuthService();
 
   @override
@@ -63,7 +64,7 @@ class _SignupState extends State<Signup> {
   }
 
   Future<void> _handleSignup() async {
-    if (_emailError != null || _passwordError != null) return;
+    if (_emailError != null || _passwordError != null || _role == null) return;
 
     setState(() => _isLoading = true);
 
@@ -71,6 +72,7 @@ class _SignupState extends State<Signup> {
       await _authService.signup(
         email: _emailController.text.trim(),
         password: _passwordController.text.trim(),
+        role: _role!, // Send the selected role to the backend
         context: context,
       );
     } catch (e) {
@@ -87,7 +89,6 @@ class _SignupState extends State<Signup> {
     return Scaffold(
       backgroundColor: Colors.white,
       resizeToAvoidBottomInset: true,
-      bottomNavigationBar: _signin(context),
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -95,7 +96,7 @@ class _SignupState extends State<Signup> {
       ),
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+          padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Column(
             children: [
               Center(
@@ -114,8 +115,15 @@ class _SignupState extends State<Signup> {
               _emailAddress(),
               const SizedBox(height: 20),
               _password(),
+              const SizedBox(height: 20),
+              _roleDropdown(),
               const SizedBox(height: 50),
               _signupButton(),
+              // Place the sign-in link below the signup button with 10 padding
+              Padding(
+                padding: const EdgeInsets.only(top: 10),
+                child: _signin(context),
+              ),
             ],
           ),
         ),
@@ -209,6 +217,64 @@ class _SignupState extends State<Signup> {
     );
   }
 
+  // Dropdown for selecting the role (Student or Admin)
+  Widget _roleDropdown() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Role',
+          style: GoogleFonts.raleway(
+            textStyle: const TextStyle(
+              color: Colors.black,
+              fontSize: 16,
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+        Container(
+          decoration: BoxDecoration(
+            color: const Color(0xffF7F7F9),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: Colors.grey),
+          ),
+          child: DropdownButton<String>(
+            value: _role, // value is null initially
+            hint: Padding(
+              padding: const EdgeInsets.only(
+                  left: 8.0), // Add padding to the hint text
+              child: Text(
+                'Please choose a role', // Placeholder text
+                style: const TextStyle(color: Color(0xff6A6A6A)),
+              ),
+            ),
+            items: <String>['Student', 'Admin']
+                .map<DropdownMenuItem<String>>((String value) {
+              return DropdownMenuItem<String>(
+                value: value,
+                child: Padding(
+                  padding: const EdgeInsets.only(
+                      left: 8.0), // Add padding to the dropdown item
+                  child: Text(
+                    value,
+                    style: const TextStyle(color: Colors.black),
+                  ),
+                ),
+              );
+            }).toList(),
+            onChanged: (String? newValue) {
+              setState(() {
+                _role = newValue; // Update role on selection
+              });
+            },
+            isExpanded: true,
+            underline: Container(), // Remove default underline
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _signupButton() {
     return ElevatedButton(
       style: ElevatedButton.styleFrom(
@@ -226,7 +292,7 @@ class _SignupState extends State<Signup> {
 
   Widget _signin(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.only(bottom: 60),
       child: RichText(
         textAlign: TextAlign.center,
         text: TextSpan(
