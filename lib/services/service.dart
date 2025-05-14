@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:smart_lighting/screens/login/login_screen.dart';
 import 'package:smart_lighting/screens/verification/verify_email_screen.dart';
 import 'package:smart_lighting/screens/dashboard/dashboard_screen.dart';
-import 'package:smart_lighting/common/widgets/activation/activation.dart';
+// import 'package:smart_lighting/common/widgets/activation/activation.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -124,7 +124,7 @@ class AuthService {
         if (isFirstLogin) {
           Navigator.pushReplacement(
             context,
-            MaterialPageRoute(builder: (context) => const ActivationScreen()),
+            MaterialPageRoute(builder: (context) => const Home()),
           );
           await _firestore.collection('users').doc(user.uid).update({'isFirstLogin': false});
         } else {
@@ -210,7 +210,7 @@ class AuthService {
         if (isFirstLogin) {
           Navigator.pushReplacement(
             context,
-            MaterialPageRoute(builder: (context) => const ActivationScreen()),
+            MaterialPageRoute(builder: (context) => const Home()),
           );
           await _firestore.collection('users').doc(user.uid).update({'isFirstLogin': false});
         } else {

@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:fluttertoast/fluttertoast.dart';
-import 'package:smart_lighting/screens/dashboard/dashboard_screen.dart';
-import 'package:smart_lighting/common/widgets/activation/activation.dart';
+import 'package:smart_lighting/screens/login/login_screen.dart'; // Adjust the path as needed
 
 class VerifyEmailScreen extends StatefulWidget {
   final String email;
@@ -27,11 +26,21 @@ class VerifyEmailScreenState extends State<VerifyEmailScreen> {
       user = FirebaseAuth.instance.currentUser;
 
       if (user?.emailVerified ?? false) {
+        Fluttertoast.showToast(
+          msg: 'Email successfully verified!',
+          toastLength: Toast.LENGTH_LONG,
+          gravity: ToastGravity.SNACKBAR,
+          backgroundColor: Colors.black54,
+          textColor: Colors.white,
+          fontSize: 14.0,
+        );
+
+        await Future.delayed(const Duration(seconds: 2)); // Wait for toast
+
         if (mounted) {
-          // Ensure context is still valid
           Navigator.pushReplacement(
             context,
-            MaterialPageRoute(builder: (context) => const ActivationScreen()),
+            MaterialPageRoute(builder: (context) => const Login()),
           );
         }
       } else {
@@ -117,9 +126,9 @@ class VerifyEmailScreenState extends State<VerifyEmailScreen> {
             _isLoading
                 ? const CircularProgressIndicator()
                 : ElevatedButton(
-              onPressed: _checkEmailVerification,
-              child: const Text('Check Verification Status'),
-            ),
+                    onPressed: _checkEmailVerification,
+                    child: const Text('Check Verification Status'),
+                  ),
             const SizedBox(height: 20),
             TextButton(
               onPressed: _resendVerificationEmail,
