@@ -19,10 +19,12 @@ class AuthService {
   Future<void> signup({
     required String email,
     required String password,
+    required String role,
     required BuildContext context,
   }) async {
     try {
-      UserCredential userCredential = await _auth.createUserWithEmailAndPassword(
+      UserCredential userCredential =
+          await _auth.createUserWithEmailAndPassword(
         email: email,
         password: password,
       );
@@ -32,7 +34,8 @@ class AuthService {
         await user.sendEmailVerification();
 
         await _firestore.collection('users').doc(user.uid).set({
-          'email': email,
+        'email': email,
+          'role': role, // Store role ("admin" or "user")
           'createdAt': DateTime.now(),
           'isVerified': false,
           'isFirstLogin': true,
@@ -104,7 +107,8 @@ class AuthService {
         throw "unverified:Your email is not verified. A new verification link has been sent.";
       }
 
-      DocumentSnapshot userDoc = await _firestore.collection('users').doc(user.uid).get();
+      DocumentSnapshot userDoc =
+          await _firestore.collection('users').doc(user.uid).get();
 
       if (!userDoc.exists) {
         throw "User data not found in Firestore.";
@@ -126,7 +130,10 @@ class AuthService {
             context,
             MaterialPageRoute(builder: (context) => const Home()),
           );
-          await _firestore.collection('users').doc(user.uid).update({'isFirstLogin': false});
+          await _firestore
+              .collection('users')
+              .doc(user.uid)
+              .update({'isFirstLogin': false});
         } else {
           Navigator.pushReplacement(
             context,
@@ -190,7 +197,8 @@ class AuthService {
         'isVerified': true,
       });
 
-      DocumentSnapshot userDoc = await _firestore.collection('users').doc(user.uid).get();
+      DocumentSnapshot userDoc =
+          await _firestore.collection('users').doc(user.uid).get();
 
       if (!userDoc.exists) {
         Fluttertoast.showToast(
@@ -212,7 +220,10 @@ class AuthService {
             context,
             MaterialPageRoute(builder: (context) => const Home()),
           );
-          await _firestore.collection('users').doc(user.uid).update({'isFirstLogin': false});
+          await _firestore
+              .collection('users')
+              .doc(user.uid)
+              .update({'isFirstLogin': false});
         } else {
           Navigator.pushReplacement(
             context,
@@ -238,7 +249,7 @@ class AuthService {
       Navigator.pushAndRemoveUntil(
         context,
         MaterialPageRoute(builder: (context) => const Login()),
-            (route) => false,
+        (route) => false,
       );
     }
   }
@@ -281,7 +292,8 @@ class AuthService {
       print('Current email: ${user.email}');
       print('Sending verification email to update to: $newEmail');
       await user.verifyBeforeUpdateEmail(newEmail);
-      print('Verification email sent to $newEmail. Email will update once verified.');
+      print(
+          'Verification email sent to $newEmail. Email will update once verified.');
     } on FirebaseAuthException catch (e) {
       String message;
       switch (e.code) {
@@ -298,7 +310,8 @@ class AuthService {
           message = 'Email updates are restricted in this Firebase project.';
           break;
         default:
-          message = 'Failed to send verification email: ${e.message} (code: ${e.code})';
+          message =
+              'Failed to send verification email: ${e.message} (code: ${e.code})';
       }
       print('Update email error: $message');
       throw Exception(message);
@@ -642,7 +655,8 @@ class ESP32Service extends ChangeNotifier {
             .get(Uri.parse('http://$esp32IP/disconnect'))
             .timeout(const Duration(seconds: 2));
         if (response.statusCode == 200) {
-          Fluttertoast.showToast(msg: "ESP32 disconnected and switched to AP mode");
+          Fluttertoast.showToast(
+              msg: "ESP32 disconnected and switched to AP mode");
         }
       } catch (e) {}
       final prefs = await SharedPreferences.getInstance();
@@ -778,7 +792,8 @@ class ESP32Service extends ChangeNotifier {
   }) async {
     if (esp32IP == null || !isConnected) throw Exception("ESP32 not connected");
     if (isManualOverride) {
-      Fluttertoast.showToast(msg: "Cannot update config in Manual Override Mode");
+      Fluttertoast.showToast(
+          msg: "Cannot update config in Manual Override Mode");
       throw Exception("Cannot update config in Manual Override Mode");
     }
 
