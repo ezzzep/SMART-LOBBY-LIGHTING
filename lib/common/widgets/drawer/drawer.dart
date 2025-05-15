@@ -7,6 +7,7 @@ import 'package:smart_lighting/screens/accountSettings/account_settings.dart';
 import 'package:smart_lighting/screens/qr/qr_screen.dart';
 import 'package:smart_lighting/screens/survey/survey_screen.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:smart_lighting/screens/dataChart/data_chart_screen.dart';
 
 class DrawerWidget extends StatelessWidget {
   final AuthService authService;
@@ -112,11 +113,14 @@ class DrawerWidget extends StatelessWidget {
                     Icons.wifi, 'Setup', context, const SetupScreen()),
                 _buildDrawerItem(Icons.account_circle, 'Account', context,
                     const AccountSettings()),
+                _buildDrawerItem(Icons.line_axis, 'Data Charts', context,
+                    const DataChartScreen()),
                 if (isAdmin)
                   _buildDrawerItem(Icons.qr_code, 'Download our App', context,
                       const QRScreen()),
-                _buildDrawerItem(
-                    Icons.feedback, 'Survey', context, const SurveyScreen()),
+                if (isAdmin)
+                  _buildDrawerItem(
+                      Icons.feedback, 'Survey', context, const SurveyScreen()),
                 const Divider(),
                 ListTile(
                   leading: const Icon(Icons.logout, color: Colors.red),
