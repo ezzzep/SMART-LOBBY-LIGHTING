@@ -5,14 +5,17 @@ import 'package:flutter/material.dart';
 import 'package:smart_lighting/screens/login/login_screen.dart';
 import 'package:smart_lighting/screens/verification/verify_email_screen.dart';
 import 'package:smart_lighting/screens/dashboard/dashboard_screen.dart';
-// import 'package:smart_lighting/common/widgets/activation/activation.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uuid/uuid.dart'; // Add this dependency for generating unique tokens
 
 class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+
+  // Placeholder for owners' emails (replace with actual emails)
+  final List<String> _ownerEmails = ["owner1@example.com", "owner2@example.com"];
 
   User? get currentUser => _auth.currentUser;
 
@@ -24,31 +27,51 @@ class AuthService {
   }) async {
     try {
       UserCredential userCredential =
-          await _auth.createUserWithEmailAndPassword(
+      await _auth.createUserWithEmailAndPassword(
         email: email,
         password: password,
       );
 
       User? user = userCredential.user;
       if (user != null) {
-        await user.sendEmailVerification();
+        // Generate a unique token for the verification process
+        String verificationToken = Uuid().v4();
 
+        // Store user data in Firestore
         await _firestore.collection('users').doc(user.uid).set({
-        'email': email,
-          'role': role, // Store role ("admin" or "user")
+          'email': email,
+          'role': 'Pending', // Initial role, updated upon verification
           'createdAt': DateTime.now(),
           'isVerified': false,
           'isFirstLogin': true,
+          'isAdminRequest': role == "Admin", // Flag for Admin request
+          'verificationToken': verificationToken,
         });
 
-        Fluttertoast.showToast(
-          msg: "Verification email sent. Please check your inbox.",
-          toastLength: Toast.LENGTH_LONG,
-          gravity: ToastGravity.SNACKBAR,
-          backgroundColor: Colors.black54,
-          textColor: Colors.white,
-          fontSize: 14.0,
-        );
+        // Send email verification based on role
+        if (role == "Admin") {
+          await user.sendEmailVerification();
+          print("Admin request for ${email}. Please forward the verification link to owners: ${_ownerEmails.join(', ')}");
+          print("Verification link contains token: $verificationToken");
+          Fluttertoast.showToast(
+            msg: "Admin request sent. Please forward the verification link to owners for approval.",
+            toastLength: Toast.LENGTH_LONG,
+            gravity: ToastGravity.SNACKBAR,
+            backgroundColor: Colors.black54,
+            textColor: Colors.white,
+            fontSize: 14.0,
+          );
+        } else if (role == "Student") {
+          await user.sendEmailVerification();
+          Fluttertoast.showToast(
+            msg: "Verification email sent. Please check your inbox.",
+            toastLength: Toast.LENGTH_LONG,
+            gravity: ToastGravity.SNACKBAR,
+            backgroundColor: Colors.black54,
+            textColor: Colors.white,
+            fontSize: 14.0,
+          );
+        }
 
         if (context.mounted) {
           Navigator.pushReplacement(
@@ -108,10 +131,17 @@ class AuthService {
       }
 
       DocumentSnapshot userDoc =
-          await _firestore.collection('users').doc(user.uid).get();
+      await _firestore.collection('users').doc(user.uid).get();
 
       if (!userDoc.exists) {
         throw "User data not found in Firestore.";
+      }
+
+      String role = userDoc.get('role') ?? 'Student';
+      bool isAdminApproved = role == "Admin" ? await isAdminApproved(user.uid) : true;
+
+      if (role == "Admin" && !isAdminApproved) {
+        throw "Admin account not yet approved.";
       }
 
       String firestoreEmail = userDoc.get('email') ?? '';
@@ -192,25 +222,28 @@ class AuthService {
 
     await user.reload();
 
-    if (user.emailVerified) {
+    DocumentSnapshot userDoc =
+    await _firestore.collection('users').doc(user.uid).get();
+
+    if (!userDoc.exists) {
+      Fluttertoast.showToast(
+        msg: "User data not found in Firestore.",
+        toastLength: Toast.LENGTH_LONG,
+        gravity: ToastGravity.SNACKBAR,
+        backgroundColor: Colors.black54,
+        textColor: Colors.white,
+        fontSize: 14.0,
+      );
+      return;
+    }
+
+    String role = userDoc.get('role') ?? 'Student';
+    bool isAdminApproved = role == "Admin" ? await isAdminApproved(user.uid) : true;
+
+    if (user.emailVerified && isAdminApproved) {
       await _firestore.collection('users').doc(user.uid).update({
         'isVerified': true,
       });
-
-      DocumentSnapshot userDoc =
-          await _firestore.collection('users').doc(user.uid).get();
-
-      if (!userDoc.exists) {
-        Fluttertoast.showToast(
-          msg: "User data not found in Firestore.",
-          toastLength: Toast.LENGTH_LONG,
-          gravity: ToastGravity.SNACKBAR,
-          backgroundColor: Colors.black54,
-          textColor: Colors.white,
-          fontSize: 14.0,
-        );
-        return;
-      }
 
       bool isFirstLogin = userDoc.get('isFirstLogin') ?? true;
 
@@ -233,7 +266,52 @@ class AuthService {
       }
     } else {
       Fluttertoast.showToast(
-        msg: "Email is not verified. Please check your email.",
+        msg: role == "Admin" && !isAdminApproved
+            ? "Wait for the admin to accept your verification request."
+            : "Email is not verified. Please check your email.",
+        toastLength: Toast.LENGTH_LONG,
+        gravity: ToastGravity.SNACKBAR,
+        backgroundColor: Colors.black54,
+        textColor: Colors.white,
+        fontSize: 14.0,
+      );
+    }
+  }
+
+  Future<void> checkEmailVerificationAndSetRole({required String userId}) async {
+    User? user = _auth.currentUser;
+    if (user == null || !user.emailVerified) return;
+
+    final userDoc = await _firestore.collection('users').doc(userId).get();
+    if (!userDoc.exists) return;
+
+    final data = userDoc.data() as Map<String, dynamic>;
+    final isAdminRequest = data['isAdminRequest'] ?? false;
+    final email = user.email;
+
+    if (isAdminRequest && _ownerEmails.contains(email)) {
+      // If an owner verifies, set role to Admin
+      await _firestore.collection('users').doc(userId).update({
+        'role': 'Admin',
+        'isVerified': true,
+        'isAdminApproved': true,
+      });
+      Fluttertoast.showToast(
+        msg: "Email verified. Admin role assigned.",
+        toastLength: Toast.LENGTH_LONG,
+        gravity: ToastGravity.SNACKBAR,
+        backgroundColor: Colors.black54,
+        textColor: Colors.white,
+        fontSize: 14.0,
+      );
+    } else {
+      // If not an owner or not an Admin request, set role to Student
+      await _firestore.collection('users').doc(userId).update({
+        'role': 'Student',
+        'isVerified': true,
+      });
+      Fluttertoast.showToast(
+        msg: "Email verified. Student role assigned.",
         toastLength: Toast.LENGTH_LONG,
         gravity: ToastGravity.SNACKBAR,
         backgroundColor: Colors.black54,
@@ -249,7 +327,7 @@ class AuthService {
       Navigator.pushAndRemoveUntil(
         context,
         MaterialPageRoute(builder: (context) => const Login()),
-        (route) => false,
+            (route) => false,
       );
     }
   }
@@ -311,7 +389,7 @@ class AuthService {
           break;
         default:
           message =
-              'Failed to send verification email: ${e.message} (code: ${e.code})';
+          'Failed to send verification email: ${e.message} (code: ${e.code})';
       }
       print('Update email error: $message');
       throw Exception(message);
@@ -371,8 +449,26 @@ class AuthService {
       throw Exception(message);
     }
   }
+
+  // Method to check if the admin request is approved
+  Future<bool> isAdminApproved(String userId) async {
+    final doc = await _firestore.collection('users').doc(userId).get();
+    if (!doc.exists) return false;
+    final data = doc.data() as Map<String, dynamic>;
+    return data['role'] == 'Admin';
+  }
+
+  // Method to get user role
+  Future<String> getUserRole() async {
+    User? user = _auth.currentUser;
+    if (user == null) return "Student"; // Default role if user not found
+    final doc = await _firestore.collection('users').doc(user.uid).get();
+    if (!doc.exists) return "Student";
+    return doc.get('role') ?? "Student";
+  }
 }
 
+// ESP32Service remains unchanged as per your instructions
 class ESP32Service extends ChangeNotifier {
   static final ESP32Service _instance = ESP32Service._internal();
   factory ESP32Service() => _instance;
