@@ -178,8 +178,22 @@ class AuthWrapper extends StatelessWidget {
             }
 
             final esp32Service = Provider.of<ESP32Service>(context);
+            final role = firestoreSnapshot.data!.get('role') ?? 'Student';
+            final bool isAdminApproved =
+            role == "Admin"
+                ? firestoreSnapshot.data!.get('isAdminApproved') ?? false
+                : true;
+
+            if (role == "Admin" && !isAdminApproved) {
+              print(
+                  "User ${user.email ?? 'unknown'} is an Admin but not yet approved");
+              return user.email != null
+                  ? VerifyEmailScreen(email: user.email!)
+                  : const Login();
+            }
+
             print(
-                "User ${user.email ?? 'unknown'} signed in, email verified, isConnected: ${esp32Service.isConnected}, esp32IP: ${esp32Service.esp32IP}");
+                "User ${user.email ?? 'unknown'} signed in, email verified, role: $role, isConnected: ${esp32Service.isConnected}, esp32IP: ${esp32Service.esp32IP}");
             return esp32Service.isConnected
                 ? const Home()
                 : const SetupScreen();
