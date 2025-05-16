@@ -2,7 +2,7 @@
 library html;
 
 class Blob {
-  Blob(List<dynamic> parts) {}
+  Blob(List<dynamic> parts, [Map<String, String>? options]) {}
 }
 
 class Url {

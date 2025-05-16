@@ -8,15 +8,18 @@ import 'package:smart_lighting/screens/dashboard/dashboard_screen.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:uuid/uuid.dart'; // Add this dependency for generating unique tokens
+import 'package:uuid/uuid.dart';
+import 'dart:convert';
+import 'package:fl_chart/fl_chart.dart';
+import 'package:sqflite/sqflite.dart';
+import 'package:path/path.dart' as path;
+import 'package:path_provider/path_provider.dart';
 
 class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
-  // Placeholder for owners' emails (replace with actual emails)
-  final List<String> _ownerEmails = ["owner1@example.com", "owner2@example.com"];
-
+  final List<String> _ownerEmails = ["kirigaya177013@gmail.com", "owner2@example.com"];
   User? get currentUser => _auth.currentUser;
 
   Future<void> signup({
@@ -26,29 +29,24 @@ class AuthService {
     required BuildContext context,
   }) async {
     try {
-      UserCredential userCredential =
-      await _auth.createUserWithEmailAndPassword(
+      UserCredential userCredential = await _auth.createUserWithEmailAndPassword(
         email: email,
         password: password,
       );
 
       User? user = userCredential.user;
       if (user != null) {
-        // Generate a unique token for the verification process
         String verificationToken = Uuid().v4();
-
-        // Store user data in Firestore
         await _firestore.collection('users').doc(user.uid).set({
           'email': email,
-          'role': 'Pending', // Initial role, updated upon verification
+          'role': 'Pending',
           'createdAt': DateTime.now(),
           'isVerified': false,
           'isFirstLogin': true,
-          'isAdminRequest': role == "Admin", // Flag for Admin request
+          'isAdminRequest': role == "Admin",
           'verificationToken': verificationToken,
         });
 
-        // Send email verification based on role
         if (role == "Admin") {
           await user.sendEmailVerification();
           print("Admin request for ${email}. Please forward the verification link to owners: ${_ownerEmails.join(', ')}");
@@ -130,17 +128,14 @@ class AuthService {
         throw "unverified:Your email is not verified. A new verification link has been sent.";
       }
 
-      DocumentSnapshot userDoc =
-      await _firestore.collection('users').doc(user.uid).get();
+      DocumentSnapshot userDoc = await _firestore.collection('users').doc(user.uid).get();
 
       if (!userDoc.exists) {
         throw "User data not found in Firestore.";
       }
 
       String role = userDoc.get('role') ?? 'Student';
-      bool isAdminApproved = role == "Admin" ? await isAdminApproved(user.uid) : true;
-
-      if (role == "Admin" && !isAdminApproved) {
+      if (role == "Admin" && !await isAdminApproved(user.uid)) {
         throw "Admin account not yet approved.";
       }
 
@@ -160,10 +155,7 @@ class AuthService {
             context,
             MaterialPageRoute(builder: (context) => const Home()),
           );
-          await _firestore
-              .collection('users')
-              .doc(user.uid)
-              .update({'isFirstLogin': false});
+          await _firestore.collection('users').doc(user.uid).update({'isFirstLogin': false});
         } else {
           Navigator.pushReplacement(
             context,
@@ -221,9 +213,7 @@ class AuthService {
     }
 
     await user.reload();
-
-    DocumentSnapshot userDoc =
-    await _firestore.collection('users').doc(user.uid).get();
+    DocumentSnapshot userDoc = await _firestore.collection('users').doc(user.uid).get();
 
     if (!userDoc.exists) {
       Fluttertoast.showToast(
@@ -238,9 +228,7 @@ class AuthService {
     }
 
     String role = userDoc.get('role') ?? 'Student';
-    bool isAdminApproved = role == "Admin" ? await isAdminApproved(user.uid) : true;
-
-    if (user.emailVerified && isAdminApproved) {
+    if (user.emailVerified && (role != "Admin" || await isAdminApproved(user.uid))) {
       await _firestore.collection('users').doc(user.uid).update({
         'isVerified': true,
       });
@@ -253,10 +241,7 @@ class AuthService {
             context,
             MaterialPageRoute(builder: (context) => const Home()),
           );
-          await _firestore
-              .collection('users')
-              .doc(user.uid)
-              .update({'isFirstLogin': false});
+          await _firestore.collection('users').doc(user.uid).update({'isFirstLogin': false});
         } else {
           Navigator.pushReplacement(
             context,
@@ -266,7 +251,7 @@ class AuthService {
       }
     } else {
       Fluttertoast.showToast(
-        msg: role == "Admin" && !isAdminApproved
+        msg: role == "Admin" && !await isAdminApproved(user.uid)
             ? "Wait for the admin to accept your verification request."
             : "Email is not verified. Please check your email.",
         toastLength: Toast.LENGTH_LONG,
@@ -290,7 +275,6 @@ class AuthService {
     final email = user.email;
 
     if (isAdminRequest && _ownerEmails.contains(email)) {
-      // If an owner verifies, set role to Admin
       await _firestore.collection('users').doc(userId).update({
         'role': 'Admin',
         'isVerified': true,
@@ -305,7 +289,6 @@ class AuthService {
         fontSize: 14.0,
       );
     } else {
-      // If not an owner or not an Admin request, set role to Student
       await _firestore.collection('users').doc(userId).update({
         'role': 'Student',
         'isVerified': true,
@@ -370,8 +353,7 @@ class AuthService {
       print('Current email: ${user.email}');
       print('Sending verification email to update to: $newEmail');
       await user.verifyBeforeUpdateEmail(newEmail);
-      print(
-          'Verification email sent to $newEmail. Email will update once verified.');
+      print('Verification email sent to $newEmail. Email will update once verified.');
     } on FirebaseAuthException catch (e) {
       String message;
       switch (e.code) {
@@ -388,8 +370,7 @@ class AuthService {
           message = 'Email updates are restricted in this Firebase project.';
           break;
         default:
-          message =
-          'Failed to send verification email: ${e.message} (code: ${e.code})';
+          message = 'Failed to send verification email: ${e.message} (code: ${e.code})';
       }
       print('Update email error: $message');
       throw Exception(message);
@@ -450,7 +431,6 @@ class AuthService {
     }
   }
 
-  // Method to check if the admin request is approved
   Future<bool> isAdminApproved(String userId) async {
     final doc = await _firestore.collection('users').doc(userId).get();
     if (!doc.exists) return false;
@@ -458,17 +438,15 @@ class AuthService {
     return data['role'] == 'Admin';
   }
 
-  // Method to get user role
   Future<String> getUserRole() async {
     User? user = _auth.currentUser;
-    if (user == null) return "Student"; // Default role if user not found
+    if (user == null) return "Student";
     final doc = await _firestore.collection('users').doc(user.uid).get();
     if (!doc.exists) return "Student";
     return doc.get('role') ?? "Student";
   }
 }
 
-// ESP32Service remains unchanged as per your instructions
 class ESP32Service extends ChangeNotifier {
   static final ESP32Service _instance = ESP32Service._internal();
   factory ESP32Service() => _instance;
@@ -482,6 +460,7 @@ class ESP32Service extends ChangeNotifier {
   bool _isPolling = false;
   bool _isReconnecting = false;
   Timer? _debounceTimer;
+  Database? _database;
 
   bool _pirSensorActive = false;
   List<String> _pirStatuses = List.filled(5, "NO MOTION");
@@ -504,6 +483,10 @@ class ESP32Service extends ChangeNotifier {
   bool _coolerEnabled = true;
   bool _sensorBasedLightControl = true;
 
+  // Store real-time data (last 60 seconds)
+  List<FlSpot> _tempData = [];
+  List<FlSpot> _humidityData = [];
+
   bool get pirSensorActive => _pirSensorActive;
   List<String> get pirStatuses => _pirStatuses;
   double get temperature => _temperature;
@@ -522,6 +505,8 @@ class ESP32Service extends ChangeNotifier {
   int get lightIntensity => _lightIntensity;
   bool get coolerEnabled => _coolerEnabled;
   bool get sensorBasedLightControl => _sensorBasedLightControl;
+  List<FlSpot> get tempData => _tempData;
+  List<FlSpot> get humidityData => _humidityData;
 
   set pirSensorActive(bool value) {
     _pirSensorActive = value;
@@ -535,11 +520,21 @@ class ESP32Service extends ChangeNotifier {
 
   set temperature(double value) {
     _temperature = value;
+    // Add to real-time data
+    final now = DateTime.now();
+    final second = (now.millisecondsSinceEpoch - DateTime(now.year, now.month, now.day).millisecondsSinceEpoch) / 1000.0;
+    _tempData.add(FlSpot(second, value));
+    if (_tempData.length > 60) _tempData.removeAt(0);
     _notifyWithDebounce();
   }
 
   set humidity(double value) {
     _humidity = value;
+    // Add to real-time data
+    final now = DateTime.now();
+    final second = (now.millisecondsSinceEpoch - DateTime(now.year, now.month, now.day).millisecondsSinceEpoch) / 1000.0;
+    _humidityData.add(FlSpot(second, value));
+    if (_humidityData.length > 60) _humidityData.removeAt(0);
     _notifyWithDebounce();
   }
 
@@ -562,12 +557,12 @@ class ESP32Service extends ChangeNotifier {
   set isAutoMode(bool value) {
     _isAutoMode = value;
     if (value) {
-      _pirEnabled = false; // PIR disabled in auto mode
-      _tempThreshold = 32; // Reset to ESP32 default
-      _humidThreshold = 65; // Reset to ESP32 default
-      _lightIntensity = 2; // Reset to ESP32 default
-      _coolerEnabled = true; // Reset to ESP32 default
-      _sensorBasedLightControl = true; // Sensor-based control in auto mode
+      _pirEnabled = false;
+      _tempThreshold = 32;
+      _humidThreshold = 65;
+      _lightIntensity = 2;
+      _coolerEnabled = true;
+      _sensorBasedLightControl = true;
     }
     _notifyWithDebounce();
   }
@@ -575,7 +570,7 @@ class ESP32Service extends ChangeNotifier {
   set isManualOverride(bool value) {
     _isManualOverride = value;
     if (!value) {
-      _sensorBasedLightControl = true; // Reset to sensor-based control
+      _sensorBasedLightControl = true;
     }
     _notifyWithDebounce();
   }
@@ -632,12 +627,41 @@ class ESP32Service extends ChangeNotifier {
   }
 
   Future<void> init() async {
+    await _initDatabase();
     await _loadESP32IP();
     if (esp32IP != null && esp32IP!.isNotEmpty && !isConnected) {
       await tryReconnect();
       if (!isConnected) startReconnection();
     }
     if (isConnected) _startPolling();
+  }
+
+  Future<void> _initDatabase() async {
+    final directory = await getApplicationDocumentsDirectory();
+    final dbPath = path.join(directory.path, 'temp_humidity.db');
+    _database = await openDatabase(
+      dbPath,
+      version: 1,
+      onCreate: (db, version) async {
+        await db.execute('''
+          CREATE TABLE data (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp INTEGER,
+            temperature REAL,
+            humidity REAL
+          )
+        ''');
+        await db.execute('''
+          CREATE TABLE summaries (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            hour_start INTEGER,
+            time_range TEXT,
+            avg_temp REAL,
+            avg_humidity REAL
+          )
+        ''');
+      },
+    );
   }
 
   Future<void> _loadESP32IP() async {
@@ -770,6 +794,8 @@ class ESP32Service extends ChangeNotifier {
       relayStatus = "HIGH";
       coolerStatus = "ON";
       _sensorBasedLightControl = true;
+      _tempData = [];
+      _humidityData = [];
       _notifyWithDebounce();
     }
   }
@@ -888,12 +914,10 @@ class ESP32Service extends ChangeNotifier {
   }) async {
     if (esp32IP == null || !isConnected) throw Exception("ESP32 not connected");
     if (isManualOverride) {
-      Fluttertoast.showToast(
-          msg: "Cannot update config in Manual Override Mode");
+      Fluttertoast.showToast(msg: "Cannot update config in Manual Override Mode");
       throw Exception("Cannot update config in Manual Override Mode");
     }
 
-    // Enforce PIR disabled in auto mode
     bool effectivePirEnabled = isAutoMode ? false : pirEnabled;
     if (isAutoMode && pirEnabled) {
       Fluttertoast.showToast(msg: "PIR is disabled in Auto mode");
@@ -942,10 +966,113 @@ class ESP32Service extends ChangeNotifier {
     } catch (e) {}
   }
 
+  Future<List<Map<String, dynamic>>> fetchESP32History() async {
+    if (esp32IP == null || !isConnected) {
+      throw Exception("ESP32 not connected");
+    }
+    try {
+      final response = await http
+          .get(Uri.parse('http://$esp32IP/history'))
+          .timeout(const Duration(seconds: 5));
+      if (response.statusCode == 200) {
+        List<dynamic> jsonData = jsonDecode(response.body);
+        return jsonData.cast<Map<String, dynamic>>();
+      } else {
+        throw Exception('Failed to fetch history: ${response.statusCode}');
+      }
+    } catch (e) {
+      throw Exception('Error fetching history: $e');
+    }
+  }
+
+  // Save historical data to SQLite
+  Future<void> saveHistoricalData(DateTime date, List<FlSpot> tempData, List<FlSpot> humidityData) async {
+    if (_database == null) {
+      await _initDatabase();
+    }
+    try {
+      final batch = _database!.batch();
+      final startOfDay = DateTime(date.year, date.month, date.day);
+
+      for (int i = 0; i < tempData.length && i < humidityData.length; i++) {
+        final timestamp = startOfDay.add(Duration(milliseconds: (tempData[i].x * 1000).toInt()));
+        batch.insert(
+          'data',
+          {
+            'timestamp': timestamp.millisecondsSinceEpoch ~/ 1000,
+            'temperature': tempData[i].y,
+            'humidity': humidityData[i].y,
+          },
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+      }
+      await batch.commit();
+    } catch (e) {
+      print('Error saving historical data: $e');
+      throw Exception('Failed to save historical data: $e');
+    }
+  }
+
+  // Load historical data from SQLite
+  Future<Map<String, List<FlSpot>>?> loadHistoricalData(DateTime date) async {
+    if (_database == null) {
+      await _initDatabase();
+    }
+    try {
+      final start = DateTime(date.year, date.month, date.day);
+      final end = start.add(const Duration(days: 1));
+      final startMs = start.millisecondsSinceEpoch ~/ 1000;
+      final endMs = end.millisecondsSinceEpoch ~/ 1000;
+
+      final data = await _database!.query(
+        'data',
+        where: 'timestamp >= ? AND timestamp <= ?',
+        whereArgs: [startMs, endMs],
+        orderBy: 'timestamp ASC',
+      );
+
+      if (data.isEmpty) return null;
+
+      final tempSpots = <FlSpot>[];
+      final humiditySpots = <FlSpot>[];
+
+      for (var record in data) {
+        final timestampRaw = record['timestamp'];
+        final timestampMillis = (timestampRaw is int ? timestampRaw : int.tryParse('$timestampRaw')) ?? 0;
+        final timestamp = DateTime.fromMillisecondsSinceEpoch(timestampMillis * 1000);
+        final seconds = (timestamp.millisecondsSinceEpoch - start.millisecondsSinceEpoch) / 1000.0;
+
+        final tempRaw = record['temperature'];
+        final humidRaw = record['humidity'];
+
+        final temp = (tempRaw is num) ? tempRaw.toDouble() : double.tryParse('$tempRaw') ?? 0.0;
+        final humid = (humidRaw is num) ? humidRaw.toDouble() : double.tryParse('$humidRaw') ?? 0.0;
+
+        if (temp >= 30 && temp <= 45) {
+          tempSpots.add(FlSpot(seconds, temp));
+        }
+        if (humid >= 0 && humid <= 100) {
+          humiditySpots.add(FlSpot(seconds, humid));
+        }
+      }
+
+      return {
+        'temp': tempSpots,
+        'humidity': humiditySpots,
+      };
+    } catch (e) {
+      print('Error loading historical data: $e');
+      return null;
+    }
+  }
+
+  @override
   void dispose() {
     _pollingTimer?.cancel();
     _reconnectTimer?.cancel();
     _debounceTimer?.cancel();
+    _database?.close();
     _isPolling = false;
+    super.dispose();
   }
 }

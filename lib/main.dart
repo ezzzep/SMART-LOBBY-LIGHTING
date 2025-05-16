@@ -13,45 +13,55 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:smart_lighting/services/service.dart';
 import 'package:provider/provider.dart';
 
-Future<void> main() async {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-
-  try {
-    await Firebase.initializeApp(
-      options: DefaultFirebaseOptions.currentPlatform,
-    );
-    runApp(const MyApp());
-  } catch (e) {
-    print("Firebase initialization error: $e");
-    Fluttertoast.showToast(
-      msg: "Failed to initialize Firebase. Please check your connection.",
-      toastLength: Toast.LENGTH_LONG,
-      gravity: ToastGravity.SNACKBAR,
-      backgroundColor: Colors.black54,
-      textColor: Colors.white,
-      fontSize: 14.0,
-    );
-  }
+  await Firebase.initializeApp();
+  runApp(const MyApp());
 }
 
 class MyApp extends StatefulWidget {
   const MyApp({super.key});
 
   @override
-  _MyAppState createState() => _MyAppState();
+  State<MyApp> createState() => _MyAppState();
 }
 
 class _MyAppState extends State<MyApp> {
   DateTime? _lastBackPressed;
 
+  Future<bool> _onWillPop() async {
+    final now = DateTime.now();
+    const maxDuration = Duration(seconds: 2);
+
+    if (_lastBackPressed != null &&
+        now.difference(_lastBackPressed!) <= maxDuration) {
+      _lastBackPressed = null;
+      return true;
+    } else {
+      _lastBackPressed = now;
+      Fluttertoast.showToast(
+        msg: "Press back again to exit",
+        toastLength: Toast.LENGTH_SHORT,
+        gravity: ToastGravity.SNACKBAR,
+        backgroundColor: Colors.black54,
+        textColor: Colors.white,
+        fontSize: 14.0,
+      );
+      return false;
+    }
+  }
+
+  Future<bool> _checkOnboardingStatus() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool('hasSeenOnboarding') ?? false;
+  }
+
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider(
-      create: (_) {
-        final esp32Service = ESP32Service();
-        esp32Service.init();
-        return esp32Service;
-      },
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => ESP32Service()),
+      ],
       child: MaterialApp(
         debugShowCheckedModeBanner: false,
         theme: ThemeData(
@@ -93,33 +103,6 @@ class _MyAppState extends State<MyApp> {
         ),
       ),
     );
-  }
-
-  Future<bool> _onWillPop() async {
-    final now = DateTime.now();
-    const maxDuration = Duration(seconds: 2);
-
-    if (_lastBackPressed != null &&
-        now.difference(_lastBackPressed!) <= maxDuration) {
-      _lastBackPressed = null;
-      return true;
-    } else {
-      _lastBackPressed = now;
-      Fluttertoast.showToast(
-        msg: "Press back again to exit",
-        toastLength: Toast.LENGTH_SHORT,
-        gravity: ToastGravity.SNACKBAR,
-        backgroundColor: Colors.black54,
-        textColor: Colors.white,
-        fontSize: 14.0,
-      );
-      return false;
-    }
-  }
-
-  Future<bool> _checkOnboardingStatus() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getBool('hasSeenOnboarding') ?? false;
   }
 }
 

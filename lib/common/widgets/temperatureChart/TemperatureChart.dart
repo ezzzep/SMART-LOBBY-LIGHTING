@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
@@ -9,15 +8,19 @@ import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
-
-import 'web_stubs.dart' if (dart.library.html) 'dart:html' as html;
+import 'package:smart_lighting/services/service.dart';
+import 'package:sqflite/sqflite.dart';
+import 'package:path/path.dart' as path;
+import 'dart:html' if (dart.library.io) 'web_stubs.dart' as html;
 
 class TemperatureChart extends StatefulWidget {
+  final ESP32Service esp32Service;
   final List<FlSpot> tempData;
   final List<FlSpot> humidityData;
 
   const TemperatureChart({
     super.key,
+    required this.esp32Service,
     required this.tempData,
     required this.humidityData,
   });
@@ -26,64 +29,227 @@ class TemperatureChart extends StatefulWidget {
   State<TemperatureChart> createState() => _TemperatureChartState();
 }
 
-class _TemperatureChartState extends State<TemperatureChart> {
-  DateTime selectedDate = DateTime.now(); // Use real-time date
+class _TemperatureChartState extends State<TemperatureChart> with AutomaticKeepAliveClientMixin {
+  DateTime selectedDate = DateTime.now();
   List<FlSpot> currentTempData = [];
   List<FlSpot> currentHumidityData = [];
-  Timer? _hourlyTimer;
+  Timer? _dataTimer;
+  DateTime? startDate;
+  DateTime? endDate;
+  bool isFetchingHistory = false;
+  bool isViewingHistoricalData = false;
+  Database? _database;
+  List<Map<String, dynamic>> hourlySummaries = [];
+  DateTime? lastSummaryTime;
+  
+  // Add zoom control variables
+  double tempMinX = 0;
+  double tempMaxX = 86400;
+  double tempMinY = 30;
+  double tempMaxY = 45;
+  double humidityMinX = 0;
+  double humidityMaxX = 86400;
+  double humidityMinY = 0;
+  double humidityMaxY = 100;
+
+  @override
+  bool get wantKeepAlive => true;
 
   @override
   void initState() {
     super.initState();
-    // Initialize with provided data
-    currentTempData = List.from(widget.tempData);
-    currentHumidityData = List.from(widget.humidityData);
-    // Simulate hourly data updates
-    _startHourlyDataSimulation();
+    _initDatabase();
+    _loadSavedHistoricalData();
+    _startRealTimeDataFetch();
   }
 
   @override
   void dispose() {
-    _hourlyTimer?.cancel();
+    _dataTimer?.cancel();
+    _database?.close();
     super.dispose();
   }
 
-  // Simulate new data every hour
-  void _startHourlyDataSimulation() {
-    _hourlyTimer = Timer.periodic(const Duration(hours: 1), (timer) {
-      setState(() {
-        currentTempData = _generateRandomData(30, 45); // Temp: 30–45°C
-        currentHumidityData = _generateRandomData(0, 100); // Humidity: 0–100%
-      });
+  Future<void> _initDatabase() async {
+    final directory = await getApplicationDocumentsDirectory();
+    final dbPath = path.join(directory.path, 'temp_humidity.db');
+    _database = await openDatabase(
+      dbPath,
+      version: 1,
+      onCreate: (db, version) async {
+        await db.execute('''
+          CREATE TABLE data (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp INTEGER,
+            temperature REAL,
+            humidity REAL
+          )
+        ''');
+        await db.execute('''
+          CREATE TABLE summaries (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            hour_start INTEGER,
+            time_range TEXT,
+            avg_temp REAL,
+            avg_humidity REAL
+          )
+        ''');
+      },
+    );
+  }
+
+  Future<void> _loadSavedHistoricalData() async {
+    final start = DateTime(selectedDate.year, selectedDate.month, selectedDate.day);
+    final end = start.add(const Duration(days: 1));
+    final data = await _loadDataForDateRange(start, end);
+    final tempSpots = <FlSpot>[];
+    final humiditySpots = <FlSpot>[];
+
+    for (var record in data) {
+      final timestamp = DateTime.fromMillisecondsSinceEpoch(record['timestamp'] * 1000);
+      final seconds = (timestamp.millisecondsSinceEpoch - start.millisecondsSinceEpoch) / 1000.0;
+      final temp = record['temperature']?.toDouble() ?? 0.0;
+      final humid = record['humidity']?.toDouble() ?? 0.0;
+      if (temp >= 30 && temp <= 45) {
+        tempSpots.add(FlSpot(seconds, temp));
+      }
+      if (humid >= 0 && humid <= 100) {
+        humiditySpots.add(FlSpot(seconds, humid));
+      }
+    }
+
+    setState(() {
+      currentTempData = _validateAndSortData(tempSpots, 30, 45);
+      currentHumidityData = _validateAndSortData(humiditySpots, 0, 100);
+      isViewingHistoricalData = true;
+    });
+    _loadHourlySummaries();
+  }
+
+  Future<List<Map<String, dynamic>>> _loadDataForDateRange(DateTime start, DateTime end) async {
+    if (_database == null) return [];
+    try {
+      final startMs = start.millisecondsSinceEpoch ~/ 1000;
+      final endMs = end.millisecondsSinceEpoch ~/ 1000;
+      return await _database!.query(
+        'data',
+        where: 'timestamp >= ? AND timestamp <= ?',
+        whereArgs: [startMs, endMs],
+        orderBy: 'timestamp ASC',
+      );
+    } catch (e) {
+      print('Error loading data for date range: $e');
+      return [];
+    }
+  }
+
+  void _startRealTimeDataFetch() {
+    _dataTimer?.cancel();
+    _dataTimer = Timer.periodic(const Duration(seconds: 1), (timer) async {
+      if (!widget.esp32Service.isConnected || isViewingHistoricalData) return;
+      
+      final now = DateTime.now();
+      final temp = widget.esp32Service.temperature;
+      final humid = widget.esp32Service.humidity;
+      
+      if (temp > 0 && humid > 0) {
+        final seconds = (now.millisecondsSinceEpoch - DateTime(now.year, now.month, now.day).millisecondsSinceEpoch) / 1000.0;
+        
+        if (mounted) {
+          setState(() {
+            currentTempData = _validateAndSortData([...currentTempData, FlSpot(seconds, temp)], 30, 45);
+            currentHumidityData = _validateAndSortData([...currentHumidityData, FlSpot(seconds, humid)], 0, 100);
+          });
+        }
+        
+        await _saveDataPoint(temp, humid, now);
+        _updateHourlySummary(now);
+      }
     });
   }
 
-  // Generate random data for 0–60 minutes
-  List<FlSpot> _generateRandomData(double minY, double maxY) {
-    final random = Random();
-    return List.generate(5, (index) {
-      final x = index * 15.0; // Data points at 0, 15, 30, 45, 60 minutes
-      final y = minY + random.nextDouble() * (maxY - minY);
-      return FlSpot(x, y);
-    });
+  Future<void> _saveDataPoint(double temp, double humidity, DateTime timestamp) async {
+    if (_database == null) return;
+    try {
+      await _database!.insert(
+        'data',
+        {
+          'timestamp': timestamp.millisecondsSinceEpoch ~/ 1000,
+          'temperature': temp,
+          'humidity': humidity,
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    } catch (e) {
+      print('Error saving data point: $e');
+    }
   }
 
-  // Helper function to validate and sort FlSpot data
-  List<FlSpot> _validateAndSortData(
-      List<FlSpot> data, double minY, double maxY) {
-    return data
-        .where((spot) =>
-            spot.x.isFinite &&
-            spot.y.isFinite &&
-            spot.y >= minY &&
-            spot.y <= maxY)
-        .toList()
-      ..sort((a, b) => a.x.compareTo(b.x));
+  void _updateHourlySummary(DateTime now) async {
+    if (_database == null) return;
+    final currentHour = DateTime(now.year, now.month, now.day, now.hour);
+    if (lastSummaryTime == null || !lastSummaryTime!.isAtSameMomentAs(currentHour)) {
+      final start = currentHour.subtract(const Duration(hours: 1));
+      final end = currentHour;
+      final data = await _loadDataForDateRange(start, end);
+
+      final buckets = {
+        '0–15': {'temp': <double>[], 'humid': <double>[]},
+        '16–30': {'temp': <double>[], 'humid': <double>[]},
+        '31–45': {'temp': <double>[], 'humid': <double>[]},
+        '46–60': {'temp': <double>[], 'humid': <double>[]},
+      };
+
+      for (var record in data) {
+        final timestamp = DateTime.fromMillisecondsSinceEpoch(record['timestamp'] * 1000);
+        final minute = timestamp.minute;
+        final temp = record['temperature']?.toDouble() ?? 0.0;
+        final humid = record['humidity']?.toDouble() ?? 0.0;
+
+        if (minute >= 0 && minute <= 15) {
+          buckets['0–15']!['temp']!.add(temp);
+          buckets['0–15']!['humid']!.add(humid);
+        } else if (minute > 15 && minute <= 30) {
+          buckets['16–30']!['temp']!.add(temp);
+          buckets['16–30']!['humid']!.add(humid);
+        } else if (minute > 30 && minute <= 45) {
+          buckets['31–45']!['temp']!.add(temp);
+          buckets['31–45']!['humid']!.add(humid);
+        } else if (minute > 45 && minute <= 60) {
+          buckets['46–60']!['temp']!.add(temp);
+          buckets['46–60']!['humid']!.add(humid);
+        }
+      }
+
+      for (var entry in buckets.entries) {
+        final key = entry.key;
+        final tempValues = entry.value['temp']!;
+        final humidValues = entry.value['humid']!;
+        final avgTemp = tempValues.isNotEmpty
+            ? tempValues.reduce((a, b) => a + b) / tempValues.length
+            : 0.0;
+        final avgHumid = humidValues.isNotEmpty
+            ? humidValues.reduce((a, b) => a + b) / humidValues.length
+            : 0.0;
+
+        await _database!.insert(
+          'summaries',
+          {
+            'hour_start': start.millisecondsSinceEpoch ~/ 1000,
+            'time_range': key,
+            'avg_temp': avgTemp,
+            'avg_humidity': avgHumid,
+          },
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+      }
+
+      lastSummaryTime = currentHour;
+      _loadHourlySummaries();
+    }
   }
 
-  // Calculate average data per 15-minute interval
-  Map<String, double> _calculateAverages(
-      List<FlSpot> data, DateTime selectedDate) {
+  Map<String, double> _calculateAverages(List<FlSpot> data, DateTime selectedDate) {
     final Map<String, List<double>> buckets = {
       '0–15': [],
       '16–30': [],
@@ -92,13 +258,15 @@ class _TemperatureChartState extends State<TemperatureChart> {
     };
 
     for (var spot in data) {
-      if (spot.x >= 0 && spot.x <= 15) {
+      final seconds = spot.x.toInt();
+      final minute = (seconds / 60).floor();
+      if (minute >= 0 && minute <= 15) {
         buckets['0–15']!.add(spot.y);
-      } else if (spot.x > 15 && spot.x <= 30) {
+      } else if (minute > 15 && minute <= 30) {
         buckets['16–30']!.add(spot.y);
-      } else if (spot.x > 30 && spot.x <= 45) {
+      } else if (minute > 30 && minute <= 45) {
         buckets['31–45']!.add(spot.y);
-      } else if (spot.x > 45 && spot.x <= 60) {
+      } else if (minute > 45 && minute <= 60) {
         buckets['46–60']!.add(spot.y);
       }
     }
@@ -114,7 +282,95 @@ class _TemperatureChartState extends State<TemperatureChart> {
     return averages;
   }
 
-  // Show combined summary modal with real-time clock for today only
+  void _resetData() {
+    setState(() {
+      currentTempData = _validateAndSortData(widget.esp32Service.tempData, 30, 45);
+      currentHumidityData = _validateAndSortData(widget.esp32Service.humidityData, 0, 100);
+      selectedDate = DateTime.now();
+      startDate = null;
+      endDate = null;
+      isViewingHistoricalData = false;
+    });
+    _startRealTimeDataFetch();
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Data reset to real-time')),
+    );
+  }
+
+  Future<void> _fetchHistoricalData() async {
+    if (isFetchingHistory) return;
+    setState(() {
+      isFetchingHistory = true;
+      isViewingHistoricalData = true;
+    });
+
+    try {
+      final start = DateTime(selectedDate.year, selectedDate.month, selectedDate.day);
+      final end = start.add(const Duration(days: 1));
+      final cachedData = await _loadDataForDateRange(start, end);
+      if (cachedData.isNotEmpty) {
+        final tempSpots = <FlSpot>[];
+        final humiditySpots = <FlSpot>[];
+        for (var record in cachedData) {
+          final timestamp = DateTime.fromMillisecondsSinceEpoch(record['timestamp'] * 1000);
+          final seconds = (timestamp.millisecondsSinceEpoch - start.millisecondsSinceEpoch) / 1000.0;
+          final temp = record['temperature']?.toDouble() ?? 0.0;
+          final humid = record['humidity']?.toDouble() ?? 0.0;
+          if (temp >= 30 && temp <= 45) {
+            tempSpots.add(FlSpot(seconds, temp));
+          }
+          if (humid >= 0 && humid <= 100) {
+            humiditySpots.add(FlSpot(seconds, humid));
+          }
+        }
+        setState(() {
+          currentTempData = _validateAndSortData(tempSpots, 30, 45);
+          currentHumidityData = _validateAndSortData(humiditySpots, 0, 100);
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Loaded cached historical data')),
+        );
+        return;
+      }
+
+      final jsonData = await widget.esp32Service.fetchESP32History();
+      List<FlSpot> tempSpots = [];
+      List<FlSpot> humiditySpots = [];
+      for (var record in jsonData) {
+        DateTime timestamp = DateTime.fromMillisecondsSinceEpoch(record['timestamp'] * 1000);
+        if (timestamp.isBefore(start) || timestamp.isAfter(end)) {
+          continue;
+        }
+        double temp = record['temp']?.toDouble() ?? 0.0;
+        double humid = record['humid']?.toDouble() ?? 0.0;
+        double seconds = (timestamp.millisecondsSinceEpoch - start.millisecondsSinceEpoch) / 1000.0;
+        if (temp >= 30 && temp <= 45) {
+          tempSpots.add(FlSpot(seconds, temp));
+          await _saveDataPoint(temp, humid, timestamp);
+        }
+        if (humid >= 0 && humid <= 100) {
+          humiditySpots.add(FlSpot(seconds, humid));
+        }
+      }
+      setState(() {
+        currentTempData = _validateAndSortData(tempSpots, 30, 45);
+        currentHumidityData = _validateAndSortData(humiditySpots, 0, 100);
+      });
+      await widget.esp32Service.saveHistoricalData(selectedDate, currentTempData, currentHumidityData);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Historical data fetched successfully')),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error fetching history: $e')),
+      );
+    } finally {
+      setState(() {
+        isFetchingHistory = false;
+      });
+    }
+  }
+
   void _showSummaryModal(BuildContext context, Map<String, double> tempAverages,
       Map<String, double> humidityAverages) {
     final formattedDate = DateFormat('MMMM d, yyyy').format(selectedDate);
@@ -147,7 +403,6 @@ class _TemperatureChartState extends State<TemperatureChart> {
           ),
           child: Column(
             children: [
-              // Header with conditional real-time clock
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.symmetric(vertical: 16),
@@ -181,44 +436,43 @@ class _TemperatureChartState extends State<TemperatureChart> {
                     ),
                     isToday
                         ? StreamBuilder(
-                            stream: Stream.periodic(const Duration(seconds: 1),
-                                (_) => DateTime.now()),
-                            builder: (context, snapshot) {
-                              final time = snapshot.hasData
-                                  ? DateFormat('HH:mm:ss')
-                                      .format(snapshot.data as DateTime)
-                                  : '00:00:00';
-                              return Text(
-                                time,
-                                style: const TextStyle(
-                                  color: Colors.white70,
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              );
-                            },
-                          )
-                        : const Text(
-                            '-',
-                            style: TextStyle(
-                              color: Colors.white70,
-                              fontSize: 14,
-                              fontWeight: FontWeight.w500,
-                            ),
+                      stream: Stream.periodic(const Duration(seconds: 1),
+                              (_) => DateTime.now()),
+                      builder: (context, snapshot) {
+                        final time = snapshot.hasData
+                            ? DateFormat('HH:mm:ss')
+                            .format(snapshot.data as DateTime)
+                            : '00:00:00';
+                        return Text(
+                          time,
+                          style: const TextStyle(
+                            color: Colors.white70,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
                           ),
+                        );
+                      },
+                    )
+                        : const Text(
+                      '-',
+                      style: TextStyle(
+                        color: Colors.white70,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
                   ],
                 ),
               ),
-              // Content
               Expanded(
                 child: SingleChildScrollView(
                   padding: const EdgeInsets.all(16),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      if (tempAverages.isEmpty && humidityAverages.isEmpty)
+                      if (hourlySummaries.isEmpty)
                         Text(
-                          'No data available for this date',
+                          'No summary data available for this date',
                           style: TextStyle(
                             fontSize: 14,
                             color: Colors.grey[600],
@@ -228,7 +482,6 @@ class _TemperatureChartState extends State<TemperatureChart> {
                       else
                         Column(
                           children: [
-                            // Table Header
                             Row(
                               children: [
                                 Expanded(
@@ -267,19 +520,18 @@ class _TemperatureChartState extends State<TemperatureChart> {
                               ],
                             ),
                             const Divider(),
-                            // Table Rows
-                            ...['0–15', '16–30', '31–45', '46–60'].map((time) {
-                              final temp = tempAverages[time];
-                              final humidity = humidityAverages[time];
+                            ...hourlySummaries.map((summary) {
+                              final timeRange = summary['time_range'] as String;
+                              final temp = summary['avg_temp'] as double?;
+                              final humidity = summary['avg_humidity'] as double?;
                               return Padding(
-                                padding:
-                                    const EdgeInsets.symmetric(vertical: 4),
+                                padding: const EdgeInsets.symmetric(vertical: 4),
                                 child: Row(
                                   children: [
                                     Expanded(
                                       flex: 2,
                                       child: Text(
-                                        '$time mins',
+                                        '$timeRange mins',
                                         style: TextStyle(
                                           fontSize: 14,
                                           color: Colors.grey[700],
@@ -288,9 +540,7 @@ class _TemperatureChartState extends State<TemperatureChart> {
                                     ),
                                     Expanded(
                                       child: Text(
-                                        temp != null
-                                            ? temp.toStringAsFixed(1)
-                                            : '-',
+                                        temp != null ? temp.toStringAsFixed(1) : '-',
                                         textAlign: TextAlign.center,
                                         style: TextStyle(
                                           fontSize: 14,
@@ -301,9 +551,7 @@ class _TemperatureChartState extends State<TemperatureChart> {
                                     ),
                                     Expanded(
                                       child: Text(
-                                        humidity != null
-                                            ? humidity.toStringAsFixed(1)
-                                            : '-',
+                                        humidity != null ? humidity.toStringAsFixed(1) : '-',
                                         textAlign: TextAlign.center,
                                         style: TextStyle(
                                           fontSize: 14,
@@ -322,7 +570,6 @@ class _TemperatureChartState extends State<TemperatureChart> {
                   ),
                 ),
               ),
-              // Buttons (Download Excel and Close)
               Padding(
                 padding: const EdgeInsets.all(16),
                 child: Column(
@@ -371,80 +618,160 @@ class _TemperatureChartState extends State<TemperatureChart> {
     );
   }
 
-  // Download Excel file with temperature and humidity data
   Future<void> _downloadExcel() async {
-    final validTempData = _validateAndSortData(currentTempData, 30, 45);
-    final validHumidityData = _validateAndSortData(currentHumidityData, 0, 100);
+    final start = DateTime(selectedDate.year, selectedDate.month, selectedDate.day);
+    final end = start.add(const Duration(days: 1));
+    final data = await _loadDataForDateRange(start, end);
+    final summaries = await _database?.query(
+      'summaries',
+      where: 'hour_start >= ? AND hour_start < ?',
+      whereArgs: [
+        start.millisecondsSinceEpoch ~/ 1000,
+        end.millisecondsSinceEpoch ~/ 1000,
+      ],
+    );
 
-    if (validTempData.isEmpty || validHumidityData.isEmpty) {
+    if (data.isEmpty && (summaries?.isEmpty ?? true)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('No data available to export')),
       );
       return;
     }
 
-    // Create Excel file
-    var excelFile = excel.Excel.createExcel();
-    excel.Sheet sheet = excelFile['Sheet1'];
-
-    // Add headers
-    sheet.cell(excel.CellIndex.indexByString('A1')).value =
-        excel.TextCellValue('Timestamp');
-    sheet.cell(excel.CellIndex.indexByString('B1')).value =
-        excel.TextCellValue('Temperature (°C)');
-    sheet.cell(excel.CellIndex.indexByString('C1')).value =
-        excel.TextCellValue('Humidity (%)');
-
-    // Combine data by minute
-    for (int i = 0; i < validTempData.length; i++) {
-      final minute = validTempData[i].x.toInt();
-      final timestamp = DateTime(
-        selectedDate.year,
-        selectedDate.month,
-        selectedDate.day,
-        0,
-        minute,
-      );
-      final formattedTimestamp =
-          DateFormat('yyyy-MM-dd HH:mm:ss').format(timestamp);
-
-      sheet
-          .cell(
-              excel.CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: i + 1))
-          .value = excel.TextCellValue(formattedTimestamp);
-      sheet
-          .cell(
-              excel.CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: i + 1))
-          .value = excel.DoubleCellValue(validTempData[i].y);
-      sheet
-          .cell(
-              excel.CellIndex.indexByColumnRow(columnIndex: 2, rowIndex: i + 1))
-          .value = excel.DoubleCellValue(validHumidityData[i].y);
-    }
-
-    // File name with date
-    final fileName =
-        'TempHumidity_${DateFormat('yyyyMMdd').format(selectedDate)}.xlsx';
-
     try {
+      var excelFile = excel.Excel.createExcel();
+      excel.Sheet dataSheet = excelFile['Data'];
+      excel.Sheet summarySheet = excelFile['Summaries'];
+
+      final headerStyle = excel.CellStyle(
+        fontSize: 14,
+        bold: true,
+        fontColorHex: excel.ExcelColor.white,
+        backgroundColorHex: excel.ExcelColor.blue,
+      );
+
+      // Data Sheet
+      dataSheet.cell(excel.CellIndex.indexByString('A1')).value =
+          excel.TextCellValue('Timestamp');
+      dataSheet.cell(excel.CellIndex.indexByString('B1')).value =
+          excel.TextCellValue('Temperature (°C)');
+      dataSheet.cell(excel.CellIndex.indexByString('C1')).value =
+          excel.TextCellValue('Humidity (%)');
+      dataSheet.cell(excel.CellIndex.indexByString('A1')).cellStyle = headerStyle;
+      dataSheet.cell(excel.CellIndex.indexByString('B1')).cellStyle = headerStyle;
+      dataSheet.cell(excel.CellIndex.indexByString('C1')).cellStyle = headerStyle;
+
+      final dataStyle = excel.CellStyle(
+        fontSize: 12,
+        numberFormat: excel.NumFormat.standard_2,
+      );
+
+      for (int i = 0; i < data.length; i++) {
+        final timestamp = DateTime.fromMillisecondsSinceEpoch(data[i]['timestamp'] * 1000);
+        final formattedTimestamp = DateFormat('yyyy-MM-dd HH:mm:ss').format(timestamp);
+
+        dataSheet
+            .cell(excel.CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: i + 1))
+            .value = excel.TextCellValue(formattedTimestamp);
+        dataSheet
+            .cell(excel.CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: i + 1))
+            .value = excel.DoubleCellValue(data[i]['temperature']);
+        dataSheet
+            .cell(excel.CellIndex.indexByColumnRow(columnIndex: 2, rowIndex: i + 1))
+            .value = excel.DoubleCellValue(data[i]['humidity']);
+        dataSheet
+            .cell(excel.CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: i + 1))
+            .cellStyle = dataStyle;
+        dataSheet
+            .cell(excel.CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: i + 1))
+            .cellStyle = dataStyle;
+        dataSheet
+            .cell(excel.CellIndex.indexByColumnRow(columnIndex: 2, rowIndex: i + 1))
+            .cellStyle = dataStyle;
+      }
+
+      dataSheet.setColumnWidth(0, 20.0);
+      dataSheet.setColumnWidth(1, 15.0);
+      dataSheet.setColumnWidth(2, 15.0);
+
+      // Summary Sheet
+      summarySheet.cell(excel.CellIndex.indexByString('A1')).value =
+          excel.TextCellValue('Hour Start');
+      summarySheet.cell(excel.CellIndex.indexByString('B1')).value =
+          excel.TextCellValue('Time Range');
+      summarySheet.cell(excel.CellIndex.indexByString('C1')).value =
+          excel.TextCellValue('Avg Temp (°C)');
+      summarySheet.cell(excel.CellIndex.indexByString('D1')).value =
+          excel.TextCellValue('Avg Humidity (%)');
+      summarySheet.cell(excel.CellIndex.indexByString('A1')).cellStyle = headerStyle;
+      summarySheet.cell(excel.CellIndex.indexByString('B1')).cellStyle = headerStyle;
+      summarySheet.cell(excel.CellIndex.indexByString('C1')).cellStyle = headerStyle;
+      summarySheet.cell(excel.CellIndex.indexByString('D1')).cellStyle = headerStyle;
+
+      for (int i = 0; i < (summaries?.length ?? 0); i++) {
+        final timestamp = DateTime.fromMillisecondsSinceEpoch((summaries![i]['hour_start'] as int) * 1000);
+        final formattedTimestamp = DateFormat('yyyy-MM-dd HH:mm').format(timestamp);
+
+        summarySheet
+            .cell(excel.CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: i + 1))
+            .value = excel.TextCellValue(formattedTimestamp);
+        summarySheet
+            .cell(excel.CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: i + 1))
+            .value = excel.TextCellValue(summaries[i]['time_range'] as String);
+        summarySheet
+            .cell(excel.CellIndex.indexByColumnRow(columnIndex: 2, rowIndex: i + 1))
+            .value = excel.DoubleCellValue(summaries[i]['avg_temp'] as double);
+        summarySheet
+            .cell(excel.CellIndex.indexByColumnRow(columnIndex: 3, rowIndex: i + 1))
+            .value = excel.DoubleCellValue(summaries[i]['avg_humidity'] as double);
+        summarySheet
+            .cell(excel.CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: i + 1))
+            .cellStyle = dataStyle;
+        summarySheet
+            .cell(excel.CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: i + 1))
+            .cellStyle = dataStyle;
+        summarySheet
+            .cell(excel.CellIndex.indexByColumnRow(columnIndex: 2, rowIndex: i + 1))
+            .cellStyle = dataStyle;
+        summarySheet
+            .cell(excel.CellIndex.indexByColumnRow(columnIndex: 3, rowIndex: i + 1))
+            .cellStyle = dataStyle;
+      }
+
+      summarySheet.setColumnWidth(0, 20.0);
+      summarySheet.setColumnWidth(1, 15.0);
+      summarySheet.setColumnWidth(2, 15.0);
+      summarySheet.setColumnWidth(3, 15.0);
+
+      final fileName =
+          'TempHumidity_${DateFormat('yyyyMMdd').format(selectedDate)}.xlsx';
+
       final bytes = excelFile.encode();
       if (bytes == null) {
         throw Exception('Failed to encode Excel file');
       }
 
       if (kIsWeb) {
-        // Web: Download file
-        final blob = html.Blob([bytes]);
-        final url = html.Url.createObjectUrlFromBlob(blob);
-        final anchor = html.AnchorElement(href: url)
-          ..setAttribute('download', fileName)
-          ..click();
-        html.Url.revokeObjectUrl(url);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Excel file downloaded: $fileName')),
-        );
+        try {
+          final blob = html.Blob(
+            [bytes],
+            {'type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'},
+          );
+          final url = html.Url.createObjectUrlFromBlob(blob);
+          final anchor = html.AnchorElement(href: url)
+            ..setAttribute('download', fileName)
+            ..click();
+          html.Url.revokeObjectUrl(url);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Excel file downloaded: $fileName')),
+          );
+        } catch (e) {
+          print('Error downloading file in web: $e');
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error downloading file: $e')),
+          );
+        }
       } else {
-        // Mobile: Save to device storage
         bool permissionGranted = await _requestStoragePermission();
         if (!permissionGranted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -453,34 +780,49 @@ class _TemperatureChartState extends State<TemperatureChart> {
           return;
         }
 
-        final directory = await getApplicationDocumentsDirectory();
-        final filePath = '${directory.path}/$fileName';
-        final file = File(filePath);
-        await file.writeAsBytes(bytes);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Excel file saved to: $filePath')),
-        );
+        try {
+          final directory = await getExternalStorageDirectory();
+          if (directory == null) {
+            throw Exception('Unable to access external storage directory');
+          }
+          final filePath = '${directory.path}/$fileName';
+          final file = File(filePath);
+          await file.writeAsBytes(bytes);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Excel file saved to: $filePath')),
+          );
+        } catch (e) {
+          print('Error saving file: $e');
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error saving file: $e')),
+          );
+        }
       }
     } catch (e) {
+      print('Excel download error: $e');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error exporting Excel: $e')),
       );
     }
   }
 
-  // Request storage permission for mobile
   Future<bool> _requestStoragePermission() async {
     if (!kIsWeb && (Platform.isAndroid || Platform.isIOS)) {
       var status = await Permission.storage.status;
       if (!status.isGranted) {
         status = await Permission.storage.request();
       }
+      if (!status.isGranted && Platform.isAndroid) {
+        status = await Permission.manageExternalStorage.status;
+        if (!status.isGranted) {
+          status = await Permission.manageExternalStorage.request();
+        }
+      }
       return status.isGranted;
     }
-    return true; // No permission needed for web
+    return true;
   }
 
-  // Show date picker and update selected date
   Future<void> _selectDate(BuildContext context) async {
     final DateTime? picked = await showDatePicker(
       context: context,
@@ -508,7 +850,47 @@ class _TemperatureChartState extends State<TemperatureChart> {
     if (picked != null && picked != selectedDate) {
       setState(() {
         selectedDate = picked;
+        startDate = null;
+        endDate = null;
       });
+      await _fetchHistoricalData();
+    }
+  }
+
+  Future<void> _selectDateRange(BuildContext context) async {
+    final DateTimeRange? picked = await showDateRangePicker(
+      context: context,
+      initialDateRange: startDate != null && endDate != null
+          ? DateTimeRange(start: startDate!, end: endDate!)
+          : null,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2030),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: const ColorScheme.light(
+              primary: Colors.blueAccent,
+              onPrimary: Colors.white,
+              onSurface: Colors.grey,
+            ),
+            textButtonTheme: TextButtonThemeData(
+              style: TextButton.styleFrom(
+                foregroundColor: Colors.blueAccent,
+              ),
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+    if (picked != null) {
+      setState(() {
+        startDate = picked.start;
+        endDate = picked.end;
+        selectedDate = picked.start;
+        isViewingHistoricalData = true;
+      });
+      await _fetchHistoricalData();
     }
   }
 
@@ -517,11 +899,19 @@ class _TemperatureChartState extends State<TemperatureChart> {
     final validTempData = _validateAndSortData(currentTempData, 30, 45);
     final validHumidityData = _validateAndSortData(currentHumidityData, 0, 100);
 
+    double maxX = 86400; // 24 hours in seconds
+    if (validTempData.isNotEmpty && validHumidityData.isNotEmpty) {
+      final maxDataX = [
+        validTempData.last.x,
+        validHumidityData.last.x,
+      ].reduce((a, b) => a > b ? a : b);
+      maxX = (maxDataX / 3600).ceil() * 3600; // Round up to nearest hour
+    }
+
     return SingleChildScrollView(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Temperature Chart with Date and Calendar
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: Row(
@@ -530,9 +920,9 @@ class _TemperatureChartState extends State<TemperatureChart> {
                 Text(
                   'Temperature (°C)',
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        color: Colors.grey[800],
-                      ),
+                    fontWeight: FontWeight.bold,
+                    color: Colors.grey[800],
+                  ),
                 ),
                 Row(
                   children: [
@@ -559,6 +949,19 @@ class _TemperatureChartState extends State<TemperatureChart> {
                         shadowColor: Colors.blueAccent.withOpacity(0.3),
                       ),
                     ),
+                    IconButton(
+                      onPressed: () => _selectDateRange(context),
+                      icon: const Icon(Icons.date_range, color: Colors.blueAccent),
+                      tooltip: 'Select Date Range',
+                      style: IconButton.styleFrom(
+                        backgroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        elevation: 2,
+                        shadowColor: Colors.blueAccent.withOpacity(0.3),
+                      ),
+                    ),
                   ],
                 ),
               ],
@@ -576,15 +979,15 @@ class _TemperatureChartState extends State<TemperatureChart> {
                 padding: const EdgeInsets.all(16.0),
                 child: LineChart(
                   LineChartData(
-                    minX: 0,
-                    maxX: 60,
-                    minY: 30,
-                    maxY: 45,
+                    minX: tempMinX,
+                    maxX: tempMaxX,
+                    minY: tempMinY,
+                    maxY: tempMaxY,
                     lineBarsData: [
                       LineChartBarData(
                         spots: validTempData.isNotEmpty
                             ? validTempData
-                            : [FlSpot(0, 30), FlSpot(60, 30)],
+                            : [FlSpot(0, 30), FlSpot(maxX, 30)],
                         isCurved: true,
                         gradient: const LinearGradient(
                           colors: [Colors.redAccent, Colors.orangeAccent],
@@ -608,33 +1011,38 @@ class _TemperatureChartState extends State<TemperatureChart> {
                       touchTooltipData: LineTouchTooltipData(
                         getTooltipItems: (touchedSpots) {
                           return touchedSpots.map((spot) {
+                            final hours = (spot.x / 3600).floor();
+                            final minutes = ((spot.x % 3600) / 60).floor();
+                            final time = '$hours:${minutes.toString().padLeft(2, '0')}';
                             return LineTooltipItem(
-                              '${spot.y.toStringAsFixed(1)} °C',
+                              '$time\n${spot.y.toStringAsFixed(1)} °C',
                               const TextStyle(color: Colors.white),
                             );
                           }).toList();
                         },
                       ),
+                      handleBuiltInTouches: true,
+                      touchCallback: (FlTouchEvent event, LineTouchResponse? response) {
+                        if (event is FlPanEndEvent || event is FlTapUpEvent) {
+                          setState(() {});
+                        }
+                      },
                     ),
                     titlesData: FlTitlesData(
                       show: true,
                       leftTitles: AxisTitles(
                         sideTitles: SideTitles(
                           showTitles: true,
-                          interval: 3,
+                          interval: (tempMaxY - tempMinY) / 5,
                           reservedSize: 40,
                           getTitlesWidget: (value, meta) {
-                            if ([30, 33, 36, 39, 42, 45]
-                                .contains(value.toInt())) {
-                              return Text(
-                                '${value.toStringAsFixed(0)}°C',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.grey[600],
-                                ),
-                              );
-                            }
-                            return const SizedBox.shrink();
+                            return Text(
+                              '${value.toStringAsFixed(0)}°C',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey[600],
+                              ),
+                            );
                           },
                         ),
                       ),
@@ -647,10 +1055,11 @@ class _TemperatureChartState extends State<TemperatureChart> {
                       bottomTitles: AxisTitles(
                         sideTitles: SideTitles(
                           showTitles: true,
-                          interval: 15,
+                          interval: (tempMaxX - tempMinX) / 6,
                           getTitlesWidget: (value, meta) {
+                            final hours = (value / 3600).floor();
                             return Text(
-                              value.toInt().toString(),
+                              '$hours:00',
                               style: TextStyle(
                                 fontSize: 12,
                                 color: Colors.grey[600],
@@ -670,7 +1079,7 @@ class _TemperatureChartState extends State<TemperatureChart> {
                     gridData: FlGridData(
                       show: true,
                       drawVerticalLine: false,
-                      horizontalInterval: 3,
+                      horizontalInterval: (tempMaxY - tempMinY) / 5,
                       getDrawingHorizontalLine: (value) {
                         return FlLine(
                           color: Colors.grey[200],
@@ -683,15 +1092,48 @@ class _TemperatureChartState extends State<TemperatureChart> {
               ),
             ),
           ),
-          // Humidity Chart
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: Text(
-              'Humidity (%)',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Humidity (%)',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.bold,
                     color: Colors.grey[800],
                   ),
+                ),
+                Row(
+                  children: [
+                    IconButton(
+                      onPressed: () {
+                        setState(() {
+                          humidityMinX = (humidityMinX + humidityMaxX) / 2 - (humidityMaxX - humidityMinX) / 4;
+                          humidityMaxX = (humidityMinX + humidityMaxX) / 2 + (humidityMaxX - humidityMinX) / 4;
+                        });
+                      },
+                      icon: const Icon(Icons.zoom_in, color: Colors.blueAccent),
+                      tooltip: 'Zoom In',
+                    ),
+                    IconButton(
+                      onPressed: () {
+                        setState(() {
+                          humidityMinX = (humidityMinX + humidityMaxX) / 2 - (humidityMaxX - humidityMinX);
+                          humidityMaxX = (humidityMinX + humidityMaxX) / 2 + (humidityMaxX - humidityMinX);
+                        });
+                      },
+                      icon: const Icon(Icons.zoom_out, color: Colors.blueAccent),
+                      tooltip: 'Zoom Out',
+                    ),
+                    IconButton(
+                      onPressed: _resetZoom,
+                      icon: const Icon(Icons.refresh, color: Colors.blueAccent),
+                      tooltip: 'Reset Zoom',
+                    ),
+                  ],
+                ),
+              ],
             ),
           ),
           SizedBox(
@@ -706,15 +1148,15 @@ class _TemperatureChartState extends State<TemperatureChart> {
                 padding: const EdgeInsets.all(16.0),
                 child: LineChart(
                   LineChartData(
-                    minX: 0,
-                    maxX: 60,
-                    minY: 0,
-                    maxY: 100,
+                    minX: humidityMinX,
+                    maxX: humidityMaxX,
+                    minY: humidityMinY,
+                    maxY: humidityMaxY,
                     lineBarsData: [
                       LineChartBarData(
                         spots: validHumidityData.isNotEmpty
                             ? validHumidityData
-                            : [FlSpot(0, 0), FlSpot(60, 0)],
+                            : [FlSpot(0, 0), FlSpot(maxX, 0)],
                         isCurved: true,
                         gradient: const LinearGradient(
                           colors: [Colors.blueAccent, Colors.cyanAccent],
@@ -738,20 +1180,29 @@ class _TemperatureChartState extends State<TemperatureChart> {
                       touchTooltipData: LineTouchTooltipData(
                         getTooltipItems: (touchedSpots) {
                           return touchedSpots.map((spot) {
+                            final hours = (spot.x / 3600).floor();
+                            final minutes = ((spot.x % 3600) / 60).floor();
+                            final time = '$hours:${minutes.toString().padLeft(2, '0')}';
                             return LineTooltipItem(
-                              '${spot.y.toStringAsFixed(1)} %',
+                              '$time\n${spot.y.toStringAsFixed(1)} %',
                               const TextStyle(color: Colors.white),
                             );
                           }).toList();
                         },
                       ),
+                      handleBuiltInTouches: true,
+                      touchCallback: (FlTouchEvent event, LineTouchResponse? response) {
+                        if (event is FlPanEndEvent || event is FlTapUpEvent) {
+                          setState(() {});
+                        }
+                      },
                     ),
                     titlesData: FlTitlesData(
                       show: true,
                       leftTitles: AxisTitles(
                         sideTitles: SideTitles(
                           showTitles: true,
-                          interval: 20,
+                          interval: (humidityMaxY - humidityMinY) / 5,
                           reservedSize: 40,
                           getTitlesWidget: (value, meta) {
                             return Text(
@@ -773,10 +1224,11 @@ class _TemperatureChartState extends State<TemperatureChart> {
                       bottomTitles: AxisTitles(
                         sideTitles: SideTitles(
                           showTitles: true,
-                          interval: 15,
+                          interval: (humidityMaxX - humidityMinX) / 6,
                           getTitlesWidget: (value, meta) {
+                            final hours = (value / 3600).floor();
                             return Text(
-                              value.toInt().toString(),
+                              '$hours:00',
                               style: TextStyle(
                                 fontSize: 12,
                                 color: Colors.grey[600],
@@ -796,7 +1248,7 @@ class _TemperatureChartState extends State<TemperatureChart> {
                     gridData: FlGridData(
                       show: true,
                       drawVerticalLine: false,
-                      horizontalInterval: 20,
+                      horizontalInterval: (humidityMaxY - humidityMinY) / 5,
                       getDrawingHorizontalLine: (value) {
                         return FlLine(
                           color: Colors.grey[200],
@@ -809,35 +1261,95 @@ class _TemperatureChartState extends State<TemperatureChart> {
               ),
             ),
           ),
-          // Summary Button
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: ElevatedButton(
-              onPressed: () {
-                final tempAverages =
+            child: Column(
+              children: [
+                ElevatedButton(
+                  onPressed: () {
+                    final tempAverages =
                     _calculateAverages(validTempData, selectedDate);
-                final humidityAverages =
+                    final humidityAverages =
                     _calculateAverages(validHumidityData, selectedDate);
-                _showSummaryModal(context, tempAverages, humidityAverages);
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.blueAccent,
-                foregroundColor: Colors.white,
-                minimumSize: const Size(double.infinity, 48),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
+                    _showSummaryModal(context, tempAverages, humidityAverages);
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blueAccent,
+                    foregroundColor: Colors.white,
+                    minimumSize: const Size(double.infinity, 48),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    elevation: 2,
+                    shadowColor: Colors.blueAccent.withOpacity(0.3),
+                  ),
+                  child: const Text(
+                    'Summary',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                  ),
                 ),
-                elevation: 2,
-                shadowColor: Colors.blueAccent.withOpacity(0.3),
-              ),
-              child: const Text(
-                'Summary',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-              ),
+                const SizedBox(height: 8),
+                ElevatedButton(
+                  onPressed: _resetData,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.orangeAccent,
+                    foregroundColor: Colors.white,
+                    minimumSize: const Size(double.infinity, 48),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    elevation: 2,
+                    shadowColor: Colors.orangeAccent.withOpacity(0.3),
+                  ),
+                  child: const Text(
+                    'Reset Data',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ],
             ),
           ),
         ],
       ),
     );
+  }
+
+  List<FlSpot> _validateAndSortData(
+      List<FlSpot> data, double minY, double maxY) {
+    return data
+        .where((spot) =>
+    spot.x.isFinite &&
+        spot.y.isFinite &&
+        spot.y >= minY &&
+        spot.y <= maxY &&
+        spot.x >= 0 &&
+        spot.x <= 86400)
+        .toList()
+      ..sort((a, b) => a.x.compareTo(b.x));
+  }
+
+  Future<void> _loadHourlySummaries() async {
+    if (_database == null) return;
+    final summaries = await _database!.query(
+      'summaries',
+      where: 'hour_start >= ?',
+      whereArgs: [(selectedDate.millisecondsSinceEpoch ~/ 1000) - 86400],
+    );
+    setState(() {
+      hourlySummaries = summaries;
+    });
+  }
+
+  void _resetZoom() {
+    setState(() {
+      tempMinX = 0;
+      tempMaxX = 86400;
+      tempMinY = 30;
+      tempMaxY = 45;
+      humidityMinX = 0;
+      humidityMaxX = 86400;
+      humidityMinY = 0;
+      humidityMaxY = 100;
+    });
   }
 }

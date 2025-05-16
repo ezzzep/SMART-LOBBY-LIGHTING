@@ -27,6 +27,8 @@ bool lcdActive = false;
 
 const int pirPins[5] = {PIR_1, PIR_2, PIR_3, PIR_4, PIR_5};
 int pirStates[5] = {LOW, LOW, LOW, LOW, LOW};
+bool lastPirMotion = false;
+int motionToggle = 0; // 0: Initial, 1: LOW, 2: HIGH
 
 const unsigned long RELAY_DELAY = 2000;
 int currentLightIntensity = 2;
@@ -54,6 +56,12 @@ bool isAutoMode = true;
 bool coolerEnabled = true;
 bool lightOverride = false;
 bool sensorBasedLightControl = true;
+
+// Data recording
+bool isRecording = false;
+const unsigned long RECORD_INTERVAL = 3600000; // 1 hour (updated from 10 minutes)
+unsigned long lastRecordTime = 0;
+DynamicJsonDocument recordData(8192); // Increased capacity for ~200 hourly records
 
 float currentTemp = 0.0;
 float currentHumid = 0.0;
@@ -300,6 +308,28 @@ void setCoolerState(bool state) {
     }
 }
 
+void recordSensorData() {
+    if (!isRecording || !sensorsPowered) return;
+    unsigned long currentTime = millis();
+    if (currentTime - lastRecordTime >= RECORD_INTERVAL) {
+        // Limit the number of records to 168 (7 days of hourly data)
+        while (recordData.size() >= 168) {
+            // Remove the oldest record
+            for (size_t i = 0; i < recordData.size() - 1; i++) {
+                recordData[i] = recordData[i + 1];
+            }
+            recordData.remove(recordData.size() - 1);
+        }
+
+        JsonObject record = recordData.createNestedObject();
+        record["timestamp"] = String(currentTime / 1000); // Unix timestamp in seconds
+        record["temp"] = currentTemp;
+        record["humid"] = currentHumid;
+        lastRecordTime = currentTime;
+        Serial.println("ESP32: Recorded hourly data - Temp: " + String(currentTemp) + " C, Humid: " + String(currentHumid) + "%");
+    }
+}
+
 void updateSensorValues() {
     static bool lastSensorsPowered = true;
     sensors_event_t humid1, temp1, humid2, temp2;
@@ -436,58 +466,87 @@ void handleRelayAndPIR() {
         }
     }
 
-    if (isAutoMode) {
-        Serial.println("ESP32: Auto Mode - Cooler ON, PIR disabled, Lights set to " + String(lightIntensity));
-        setCoolerState(true);
-        setLightAndCoolerIntensity(lightIntensity);
-        pirEnabled = false;
+    // Update PIR states if enabled
+    bool anyMotion = false;
+    if (pirEnabled) {
+        for (int i = 0; i < 5; i++) {
+            int pirVal = digitalRead(pirPins[i]);
+            pirStates[i] = pirVal;
+            if (pirVal == HIGH) {
+                anyMotion = true;
+                Serial.print("ESP32: Motion detected on PIR_"); Serial.print(i + 1); Serial.println(isAutoMode ? " (Auto)" : " (Manual)");
+            } else {
+                Serial.print("ESP32: No motion on PIR_"); Serial.print(i + 1); Serial.println(isAutoMode ? " (Auto)" : " (Manual)");
+            }
+        }
+    } else {
         for (int i = 0; i < 5; i++) pirStates[i] = LOW;
+        Serial.println("ESP32: PIR disabled, all PIRs set to NO MOTION");
+    }
+
+    bool highTempOrHumid = (currentTemp > tempThreshold || currentHumid > humidThreshold);
+    bool lowTempAndHumid = (currentTemp <= tempThreshold && currentHumid <= humidThreshold);
+
+    if (isAutoMode) {
+        // Auto Mode: PIR enabled, immediate light change based on temp/humid and PIR
+        Serial.println("ESP32: Auto Mode - Cooler ON, PIR enabled");
+        setCoolerState(true);
+        int targetIntensity;
+        if (anyMotion && !lastPirMotion) {
+            // New motion detected
+            if (highTempOrHumid) {
+                targetIntensity = 1; // LOW
+                motionToggle = 1;
+            } else if (lowTempAndHumid) {
+                targetIntensity = 2; // HIGH
+                motionToggle = 2;
+            } else {
+                targetIntensity = lightIntensity;
+                motionToggle = 0;
+            }
+            Serial.println("ESP32: Auto Mode - New motion, setting lights to " + String(targetIntensity == 1 ? "LOW" : "HIGH"));
+        } else if (anyMotion && lastPirMotion) {
+            // Subsequent motion
+            if (motionToggle == 1 && lowTempAndHumid) {
+                targetIntensity = 2; // Toggle to HIGH
+                motionToggle = 2;
+            } else if (motionToggle == 2 && highTempOrHumid) {
+                targetIntensity = 1; // Toggle to LOW
+                motionToggle = 1;
+            } else {
+                targetIntensity = currentLightIntensity; // Maintain current
+            }
+            Serial.println("ESP32: Auto Mode - Subsequent motion, setting lights to " + String(targetIntensity == 1 ? "LOW" : "HIGH"));
+        } else {
+            // No motion
+            targetIntensity = highTempOrHumid ? 1 : (lowTempAndHumid ? 2 : lightIntensity);
+            motionToggle = 0;
+            Serial.println("ESP32: Auto Mode - No motion, setting lights to " + String(targetIntensity == 1 ? "LOW" : "HIGH"));
+        }
+        setLightAndCoolerIntensity(targetIntensity);
     } else {
         // Manual Mode
-        // Update PIR states if enabled
-        if (pirEnabled) {
-            for (int i = 0; i < 5; i++) {
-                int pirVal = digitalRead(pirPins[i]);
-                pirStates[i] = pirVal;
-                if (pirVal == HIGH) {
-                    Serial.print("ESP32: Motion detected on PIR_"); Serial.print(i + 1); Serial.println(" (Manual)");
-                } else {
-                    Serial.print("ESP32: No motion on PIR_"); Serial.print(i + 1); Serial.println(" (Manual)");
-                }
-            }
-        } else {
-            for (int i = 0; i < 5; i++) pirStates[i] = LOW;
-            Serial.println("ESP32: PIR disabled in Manual Mode, all PIRs set to NO MOTION");
-        }
-
-        // Cooler control based on temperature/humidity and coolerEnabled
-        bool highTempOrHumid = (currentTemp > tempThreshold || currentHumid > humidThreshold);
         bool coolerOn = coolerEnabled ? highTempOrHumid : false;
         setCoolerState(coolerOn);
         Serial.println("ESP32: Cooler " + String(coolerOn ? "ON" : "OFF") + " (Manual: " + (coolerEnabled ? "enabled" : "disabled") + ")");
 
-        // Light control
         if (sensorBasedLightControl) {
-            // Sensor-based control (PIR, temp, humidity) or HIGH if PIR disabled
+            // Sensor-based control
             int targetIntensity;
             if (!pirEnabled) {
-                targetIntensity = 2; // PIR disabled, set lights to HIGH
-                Serial.println("ESP32: Manual Mode - PIR disabled, setting lights to HIGH");
+                // PIR disabled, use temp/humid only
+                targetIntensity = highTempOrHumid ? 1 : (lowTempAndHumid ? 2 : lightIntensity);
+                Serial.println("ESP32: Manual Mode - PIR disabled, setting lights to " + String(targetIntensity == 1 ? "LOW" : "HIGH"));
             } else {
-                // PIR enabled, use sensor-based control
-                int activePIRCount = 0;
-                for (int i = 0; i < 5; i++) {
-                    if (pirStates[i] == HIGH) activePIRCount++;
-                }
-                if (activePIRCount == 0) {
-                    targetIntensity = 0; // No motion, lights OFF
-                    Serial.println("ESP32: Manual Mode - No PIR active, setting lights to OFF");
-                } else if (activePIRCount >= 2 && activePIRCount <= 3) {
-                    targetIntensity = highTempOrHumid ? 1 : lightIntensity; // LOW if high temp/humid, else configured
-                    Serial.println("ESP32: Manual Mode - " + String(activePIRCount) + " PIRs active, setting lights to " + (targetIntensity == 1 ? "LOW (high temp/humid)" : "CONFIGURED"));
+                // PIR enabled
+                if (anyMotion && !lastPirMotion) {
+                    // New motion
+                    targetIntensity = highTempOrHumid ? 1 : (lowTempAndHumid ? 2 : lightIntensity);
+                    Serial.println("ESP32: Manual Mode - New motion, setting lights to " + String(targetIntensity == 1 ? "LOW" : "HIGH"));
                 } else {
-                    targetIntensity = lightIntensity; // Use configured intensity
-                    Serial.println("ESP32: Manual Mode - " + String(activePIRCount) + " PIRs active, using configured light intensity: " + String(lightIntensity));
+                    // No new motion, use temp/humid
+                    targetIntensity = highTempOrHumid ? 1 : (lowTempAndHumid ? 2 : lightIntensity);
+                    Serial.println("ESP32: Manual Mode - No new motion, setting lights to " + String(targetIntensity == 1 ? "LOW" : "HIGH"));
                 }
             }
             setLightAndCoolerIntensity(targetIntensity);
@@ -497,6 +556,7 @@ void handleRelayAndPIR() {
             setLightAndCoolerIntensity(lightIntensity);
         }
     }
+    lastPirMotion = anyMotion;
 }
 
 String getPIRStatus() {
@@ -583,7 +643,7 @@ void startWiFiServer() {
 
             tempThreshold = newTempThreshold;
             humidThreshold = newHumidThreshold;
-            pirEnabled = newIsAutoMode ? false : newPirEnabled;
+            pirEnabled = newIsAutoMode ? true : newPirEnabled; // PIR enabled in Auto mode
             lightIntensity = newLightIntensity;
             isAutoMode = newIsAutoMode;
             coolerEnabled = newCoolerEnabled;
@@ -605,6 +665,43 @@ void startWiFiServer() {
             server.send(400, "text/plain", "Missing parameters");
             Serial.println("ESP32: /config failed: Missing parameters");
         }
+    });
+
+    server.on("/record", HTTP_POST, []() {
+        if (server.hasArg("action")) {
+            String action = server.arg("action");
+            if (action == "start") {
+                isRecording = true;
+                recordData.clear();
+                lastRecordTime = millis();
+                Serial.println("ESP32: Recording started");
+                server.send(200, "text/plain", "Recording started");
+            } else if (action == "stop") {
+                isRecording = false;
+                String jsonData;
+                serializeJson(recordData, jsonData);
+                Serial.println("ESP32: Recording stopped, sending data");
+                server.send(200, "application/json", jsonData);
+            } else {
+                server.send(400, "text/plain", "Invalid action");
+                Serial.println("ESP32: /record failed: Invalid action");
+            }
+        } else {
+            server.send(400, "text/plain", "Missing action parameter");
+            Serial.println("ESP32: /record failed: Missing action parameter");
+        }
+    });
+
+    server.on("/history", HTTP_GET, []() {
+        if (recordData.size() == 0) {
+            Serial.println("ESP32: No historical data available");
+            server.send(200, "application/json", "[]");
+            return;
+        }
+        String jsonData;
+        serializeJson(recordData, jsonData);
+        Serial.println("ESP32: Sending historical data");
+        server.send(200, "application/json", jsonData);
     });
 
     server.on("/setWiFi", HTTP_POST, []() {
@@ -818,6 +915,11 @@ void setup() {
         displayAPMode();
         startWiFiServer();
     }
+    // Start recording by default
+    isRecording = true;
+    recordData.clear();
+    lastRecordTime = millis();
+    Serial.println("ESP32: Historical data recording started");
     updateSensorValues();
     handleRelayAndPIR();
     updateDisplay(currentTemp, currentHumid, sensorsPowered);
@@ -833,6 +935,7 @@ void loop() {
 
     if (currentTime - lastSerialUpdate >= serialUpdateInterval) {
         updateSensorValues();
+        recordSensorData();
         printPIRStatus();
         handleRelayAndPIR();
         lastSerialUpdate = currentTime;

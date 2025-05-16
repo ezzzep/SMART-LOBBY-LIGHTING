@@ -26,21 +26,31 @@ class VerifyEmailScreenState extends State<VerifyEmailScreen> {
   void initState() {
     super.initState();
     _fetchUserRole();
-    _checkEmailVerification(); // Start polling for email verification
+    _checkEmailVerification();
   }
 
   Future<void> _fetchUserRole() async {
     User? user = FirebaseAuth.instance.currentUser;
-    if (user != null) {
-      DocumentSnapshot userDoc = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .get();
-      if (userDoc.exists) {
-        setState(() {
-          _role = userDoc.get('role') ?? 'Pending';
-        });
-      }
+    if (user == null) {
+      Fluttertoast.showToast(
+        msg: "No user is currently signed in.",
+        toastLength: Toast.LENGTH_LONG,
+        gravity: ToastGravity.SNACKBAR,
+        backgroundColor: Colors.black54,
+        textColor: Colors.white,
+        fontSize: 14.0,
+      );
+      return;
+    }
+
+    DocumentSnapshot userDoc = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .get();
+    if (userDoc.exists) {
+      setState(() {
+        _role = userDoc.get('role') ?? 'Pending';
+      });
     }
   }
 
@@ -55,21 +65,30 @@ class VerifyEmailScreenState extends State<VerifyEmailScreen> {
         throw Exception("No user is currently signed in.");
       }
 
-      // Poll for email verification status
-      while (!user.emailVerified) {
+      bool isEmailVerified = user.emailVerified;
+      while (!isEmailVerified) {
         await Future.delayed(const Duration(seconds: 3));
-        await user.reload(); // Safe to call if user is not null
-        user = FirebaseAuth.instance.currentUser; // Refresh user object
+
+        await user?.reload();
+        user = FirebaseAuth.instance.currentUser;
         if (user == null) {
           throw Exception("User session expired during verification.");
         }
+
+
+
+
+        if (user == null) {
+          throw Exception("User session expired during verification.");
+        }
+        isEmailVerified = user.emailVerified;
       }
 
-      if (user.emailVerified) {
-        // Update role based on verification
-        await _authService.checkEmailVerificationAndSetRole(userId: user.uid);
+      if (isEmailVerified) {
+        final String? userId = user?.uid;
+        if (userId == null) throw Exception("User ID is null.");
 
-        // Refresh role after assignment
+        await _authService.checkEmailVerificationAndSetRole(userId: userId);
         await _fetchUserRole();
 
         setState(() {
@@ -78,7 +97,7 @@ class VerifyEmailScreenState extends State<VerifyEmailScreen> {
 
         DocumentSnapshot userDoc = await FirebaseFirestore.instance
             .collection('users')
-            .doc(user.uid)
+            .doc(userId)
             .get();
 
         if (!userDoc.exists) {
@@ -86,7 +105,7 @@ class VerifyEmailScreenState extends State<VerifyEmailScreen> {
         }
 
         bool isAdminApproved = _role == "Admin"
-            ? await _authService.isAdminApproved(user.uid)
+            ? await _authService.isAdminApproved(userId)
             : true;
 
         if (_role == "Admin" && !isAdminApproved) {
@@ -103,7 +122,7 @@ class VerifyEmailScreenState extends State<VerifyEmailScreen> {
 
         await FirebaseFirestore.instance
             .collection('users')
-            .doc(user.uid)
+            .doc(userId)
             .update({'isVerified': true});
 
         Fluttertoast.showToast(
@@ -117,22 +136,13 @@ class VerifyEmailScreenState extends State<VerifyEmailScreen> {
           fontSize: 14.0,
         );
 
-        await Future.delayed(const Duration(seconds: 2)); // Wait for toast
+        await Future.delayed(const Duration(seconds: 2));
 
         if (mounted) {
-          // Redirect based on role
-          if (_role == "Admin") {
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(builder: (context) => const SetupScreen()),
-            );
-          } else {
-            // For Students, go to SetupScreen in ESP32 IP input mode
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(builder: (context) => const SetupScreen()),
-            );
-          }
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => const SetupScreen()),
+          );
         }
       } else {
         Fluttertoast.showToast(
@@ -163,10 +173,33 @@ class VerifyEmailScreenState extends State<VerifyEmailScreen> {
   Future<void> _resendVerificationEmail() async {
     try {
       User? user = FirebaseAuth.instance.currentUser;
-      await user?.reload(); // Safe to call with null-aware operator
-      user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        Fluttertoast.showToast(
+          msg: "No user is currently signed in.",
+          toastLength: Toast.LENGTH_LONG,
+          gravity: ToastGravity.SNACKBAR,
+          backgroundColor: Colors.black54,
+          textColor: Colors.white,
+          fontSize: 14.0,
+        );
+        return;
+      }
 
-      if (user != null && !user.emailVerified) {
+      await user.reload();
+      user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        Fluttertoast.showToast(
+          msg: "User session expired.",
+          toastLength: Toast.LENGTH_LONG,
+          gravity: ToastGravity.SNACKBAR,
+          backgroundColor: Colors.black54,
+          textColor: Colors.white,
+          fontSize: 14.0,
+        );
+        return;
+      }
+
+      if (!user.emailVerified) {
         await user.sendEmailVerification();
         Fluttertoast.showToast(
           msg: 'Verification email sent. Please check your inbox.',
