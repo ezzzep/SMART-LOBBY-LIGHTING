@@ -8,14 +8,20 @@ import 'package:smart_lighting/screens/qr/qr_screen.dart';
 import 'package:smart_lighting/screens/survey/survey_screen.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:smart_lighting/screens/dataChart/data_chart_screen.dart';
+import 'package:provider/provider.dart';
 
 class DrawerWidget extends StatelessWidget {
   final AuthService authService;
 
-  const DrawerWidget({super.key, required this.authService});
+  const DrawerWidget({
+    super.key, 
+    required this.authService,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final esp32Service = Provider.of<ESP32Service>(context, listen: false);
+    
     return Container(
       width: 270,
       decoration: BoxDecoration(
