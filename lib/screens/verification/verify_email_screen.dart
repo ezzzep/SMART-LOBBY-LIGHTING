@@ -56,18 +56,18 @@ class VerifyEmailScreenState extends State<VerifyEmailScreen> {
       }
 
       // Poll for email verification status
-      while (!user.emailVerified) {
+      while (user?.emailVerified != true) {
         await Future.delayed(const Duration(seconds: 3));
-        await user.reload(); // Safe to call if user is not null
+        await user?.reload(); // Safe to call if user is not null
         user = FirebaseAuth.instance.currentUser; // Refresh user object
         if (user == null) {
           throw Exception("User session expired during verification.");
         }
       }
 
-      if (user.emailVerified) {
+      if (user?.emailVerified == true) {
         // Update role based on verification
-        await _authService.checkEmailVerificationAndSetRole(userId: user.uid);
+        await _authService.checkEmailVerificationAndSetRole(userId: user!.uid);
 
         // Refresh role after assignment
         await _fetchUserRole();
@@ -78,7 +78,7 @@ class VerifyEmailScreenState extends State<VerifyEmailScreen> {
 
         DocumentSnapshot userDoc = await FirebaseFirestore.instance
             .collection('users')
-            .doc(user.uid)
+            .doc(user!.uid)
             .get();
 
         if (!userDoc.exists) {
@@ -86,7 +86,7 @@ class VerifyEmailScreenState extends State<VerifyEmailScreen> {
         }
 
         bool isAdminApproved = _role == "Admin"
-            ? await _authService.isAdminApproved(user.uid)
+            ? await _authService.isAdminApproved(user!.uid)
             : true;
 
         if (_role == "Admin" && !isAdminApproved) {
@@ -103,7 +103,7 @@ class VerifyEmailScreenState extends State<VerifyEmailScreen> {
 
         await FirebaseFirestore.instance
             .collection('users')
-            .doc(user.uid)
+            .doc(user!.uid)
             .update({'isVerified': true});
 
         Fluttertoast.showToast(

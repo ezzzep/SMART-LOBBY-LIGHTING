@@ -1,3 +1,4 @@
+// temperaturechart_v2.dart
 import 'dart:async';
 import 'dart:io';
 import 'dart:math';
@@ -9,6 +10,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
+import 'package:smart_lighting/services/service.dart';
 
 import 'web_stubs.dart' if (dart.library.html) 'dart:html' as html;
 
@@ -26,11 +28,18 @@ class TemperatureChart extends StatefulWidget {
   State<TemperatureChart> createState() => _TemperatureChartState();
 }
 
-class _TemperatureChartState extends State<TemperatureChart> {
-  DateTime selectedDate = DateTime.now(); // Use real-time date
+class _TemperatureChartState extends State<TemperatureChart>
+    with SingleTickerProviderStateMixin {
+  DateTime selectedDate = DateTime.now();
   List<FlSpot> currentTempData = [];
   List<FlSpot> currentHumidityData = [];
   Timer? _hourlyTimer;
+  Timer? _animationTimer;
+  double _animationProgress = 0.0;
+  List<FlSpot> _previousTempData = [];
+  List<FlSpot> _previousHumidityData = [];
+  late AnimationController _animationController;
+  late Animation<double> _animation;
 
   @override
   void initState() {
@@ -38,39 +47,78 @@ class _TemperatureChartState extends State<TemperatureChart> {
     // Initialize with provided data
     currentTempData = List.from(widget.tempData);
     currentHumidityData = List.from(widget.humidityData);
-    // Simulate hourly data updates
-    _startHourlyDataSimulation();
+    _previousTempData = List.from(widget.tempData);
+    _previousHumidityData = List.from(widget.humidityData);
+
+    // Initialize animation controller
+    _animationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 500),
+    );
+
+    _animation = CurvedAnimation(
+      parent: _animationController,
+      curve: Curves.easeInOut,
+    );
+
+    _animationController.addListener(() {
+      setState(() {
+        _animationProgress = _animation.value;
+      });
+    });
+  }
+
+  @override
+  void didUpdateWidget(TemperatureChart oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.tempData != oldWidget.tempData ||
+        widget.humidityData != oldWidget.humidityData) {
+      // Store previous data before updating
+      _previousTempData = List.from(currentTempData);
+      _previousHumidityData = List.from(currentHumidityData);
+      currentTempData = List.from(widget.tempData);
+      currentHumidityData = List.from(widget.humidityData);
+      // Animate the transition to new data
+      _animateDataTransition();
+    }
+  }
+
+  void _animateDataTransition() {
+    _animationController.reset();
+    _animationController.forward();
+  }
+
+  List<FlSpot> _interpolateData(
+      List<FlSpot> newData, List<FlSpot> oldData, double progress) {
+    if (newData.isEmpty && oldData.isEmpty) return [];
+    if (newData.isEmpty) return List.from(oldData);
+    if (oldData.isEmpty) return List.from(newData);
+
+    List<FlSpot> interpolated = [];
+    int maxLength = max(newData.length, oldData.length);
+
+    for (int i = 0; i < maxLength; i++) {
+      FlSpot oldSpot = i < oldData.length ? oldData[i] : oldData.last;
+      FlSpot newSpot = i < newData.length ? newData[i] : newData.last;
+
+      double x = oldSpot.x + (newSpot.x - oldSpot.x) * progress;
+      double y = oldSpot.y + (newSpot.y - oldSpot.y) * progress;
+      interpolated.add(FlSpot(x, y));
+    }
+
+    return interpolated;
   }
 
   @override
   void dispose() {
     _hourlyTimer?.cancel();
+    _animationTimer?.cancel();
+    _animationController.dispose();
     super.dispose();
   }
 
-  // Simulate new data every hour
-  void _startHourlyDataSimulation() {
-    _hourlyTimer = Timer.periodic(const Duration(hours: 1), (timer) {
-      setState(() {
-        currentTempData = _generateRandomData(30, 45); // Temp: 30–45°C
-        currentHumidityData = _generateRandomData(0, 100); // Humidity: 0–100%
-      });
-    });
-  }
-
-  // Generate random data for 0–60 minutes
-  List<FlSpot> _generateRandomData(double minY, double maxY) {
-    final random = Random();
-    return List.generate(5, (index) {
-      final x = index * 15.0; // Data points at 0, 15, 30, 45, 60 minutes
-      final y = minY + random.nextDouble() * (maxY - minY);
-      return FlSpot(x, y);
-    });
-  }
-
   // Helper function to validate and sort FlSpot data
-  List<FlSpot> _validateAndSortData(
-      List<FlSpot> data, double minY, double maxY) {
+  List<FlSpot> _validateAndSortData(List<FlSpot> data, double minY, double maxY) {
     return data
         .where((spot) =>
             spot.x.isFinite &&
@@ -82,8 +130,7 @@ class _TemperatureChartState extends State<TemperatureChart> {
   }
 
   // Calculate average data per 15-minute interval
-  Map<String, double> _calculateAverages(
-      List<FlSpot> data, DateTime selectedDate) {
+  Map<String, double> _calculateAverages(List<FlSpot> data, DateTime selectedDate) {
     final Map<String, List<double>> buckets = {
       '0–15': [],
       '16–30': [],
@@ -517,6 +564,10 @@ class _TemperatureChartState extends State<TemperatureChart> {
     final validTempData = _validateAndSortData(currentTempData, 30, 45);
     final validHumidityData = _validateAndSortData(currentHumidityData, 0, 100);
 
+    // Calculate time intervals for x-axis
+    final maxX = validTempData.isNotEmpty ? validTempData.last.x : 3600.0;
+    final interval = maxX > 900 ? 300.0 : 60.0; // Show 5-min or 1-min intervals
+
     return SingleChildScrollView(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -577,20 +628,31 @@ class _TemperatureChartState extends State<TemperatureChart> {
                 child: LineChart(
                   LineChartData(
                     minX: 0,
-                    maxX: 60,
+                    maxX: maxX,
                     minY: 30,
                     maxY: 45,
                     lineBarsData: [
                       LineChartBarData(
                         spots: validTempData.isNotEmpty
                             ? validTempData
-                            : [FlSpot(0, 30), FlSpot(60, 30)],
+                            : [FlSpot(0, 30), FlSpot(maxX, 30)],
                         isCurved: true,
+                        curveSmoothness: 0.35,
                         gradient: const LinearGradient(
                           colors: [Colors.redAccent, Colors.orangeAccent],
                         ),
                         barWidth: 3,
-                        dotData: FlDotData(show: false),
+                        dotData: FlDotData(
+                          show: true,
+                          getDotPainter: (spot, percent, barData, index) {
+                            return FlDotCirclePainter(
+                              radius: 3,
+                              color: Colors.redAccent,
+                              strokeWidth: 1,
+                              strokeColor: Colors.white,
+                            );
+                          },
+                        ),
                         belowBarData: BarAreaData(
                           show: true,
                           gradient: LinearGradient(
@@ -608,8 +670,10 @@ class _TemperatureChartState extends State<TemperatureChart> {
                       touchTooltipData: LineTouchTooltipData(
                         getTooltipItems: (touchedSpots) {
                           return touchedSpots.map((spot) {
+                            final minutes = (spot.x / 60).floor();
+                            final seconds = (spot.x % 60).floor();
                             return LineTooltipItem(
-                              '${spot.y.toStringAsFixed(1)} °C',
+                              '${minutes}m ${seconds}s: ${spot.y.toStringAsFixed(1)} °C',
                               const TextStyle(color: Colors.white),
                             );
                           }).toList();
@@ -647,10 +711,11 @@ class _TemperatureChartState extends State<TemperatureChart> {
                       bottomTitles: AxisTitles(
                         sideTitles: SideTitles(
                           showTitles: true,
-                          interval: 15,
+                          interval: interval,
                           getTitlesWidget: (value, meta) {
+                            final minutes = (value / 60).floor();
                             return Text(
-                              value.toInt().toString(),
+                              '${minutes}m',
                               style: TextStyle(
                                 fontSize: 12,
                                 color: Colors.grey[600],
@@ -669,12 +734,20 @@ class _TemperatureChartState extends State<TemperatureChart> {
                     ),
                     gridData: FlGridData(
                       show: true,
-                      drawVerticalLine: false,
+                      drawVerticalLine: true,
+                      verticalInterval: interval,
                       horizontalInterval: 3,
                       getDrawingHorizontalLine: (value) {
                         return FlLine(
                           color: Colors.grey[200],
                           strokeWidth: 1,
+                        );
+                      },
+                      getDrawingVerticalLine: (value) {
+                        return FlLine(
+                          color: Colors.grey[200],
+                          strokeWidth: 1,
+                          dashArray: [5, 5],
                         );
                       },
                     ),
@@ -707,20 +780,31 @@ class _TemperatureChartState extends State<TemperatureChart> {
                 child: LineChart(
                   LineChartData(
                     minX: 0,
-                    maxX: 60,
+                    maxX: maxX,
                     minY: 0,
                     maxY: 100,
                     lineBarsData: [
                       LineChartBarData(
                         spots: validHumidityData.isNotEmpty
                             ? validHumidityData
-                            : [FlSpot(0, 0), FlSpot(60, 0)],
+                            : [FlSpot(0, 0), FlSpot(maxX, 0)],
                         isCurved: true,
+                        curveSmoothness: 0.35,
                         gradient: const LinearGradient(
                           colors: [Colors.blueAccent, Colors.cyanAccent],
                         ),
                         barWidth: 3,
-                        dotData: FlDotData(show: false),
+                        dotData: FlDotData(
+                          show: true,
+                          getDotPainter: (spot, percent, barData, index) {
+                            return FlDotCirclePainter(
+                              radius: 3,
+                              color: Colors.blueAccent,
+                              strokeWidth: 1,
+                              strokeColor: Colors.white,
+                            );
+                          },
+                        ),
                         belowBarData: BarAreaData(
                           show: true,
                           gradient: LinearGradient(
@@ -738,8 +822,10 @@ class _TemperatureChartState extends State<TemperatureChart> {
                       touchTooltipData: LineTouchTooltipData(
                         getTooltipItems: (touchedSpots) {
                           return touchedSpots.map((spot) {
+                            final minutes = (spot.x / 60).floor();
+                            final seconds = (spot.x % 60).floor();
                             return LineTooltipItem(
-                              '${spot.y.toStringAsFixed(1)} %',
+                              '${minutes}m ${seconds}s: ${spot.y.toStringAsFixed(1)} %',
                               const TextStyle(color: Colors.white),
                             );
                           }).toList();
@@ -754,13 +840,17 @@ class _TemperatureChartState extends State<TemperatureChart> {
                           interval: 20,
                           reservedSize: 40,
                           getTitlesWidget: (value, meta) {
-                            return Text(
-                              '${value.toStringAsFixed(0)}%',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: Colors.grey[600],
-                              ),
-                            );
+                            if ([0, 20, 40, 60, 80, 100]
+                                .contains(value.toInt())) {
+                              return Text(
+                                '${value.toStringAsFixed(0)}%',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey[600],
+                                ),
+                              );
+                            }
+                            return const SizedBox.shrink();
                           },
                         ),
                       ),
@@ -773,10 +863,11 @@ class _TemperatureChartState extends State<TemperatureChart> {
                       bottomTitles: AxisTitles(
                         sideTitles: SideTitles(
                           showTitles: true,
-                          interval: 15,
+                          interval: interval,
                           getTitlesWidget: (value, meta) {
+                            final minutes = (value / 60).floor();
                             return Text(
-                              value.toInt().toString(),
+                              '${minutes}m',
                               style: TextStyle(
                                 fontSize: 12,
                                 color: Colors.grey[600],
@@ -795,12 +886,20 @@ class _TemperatureChartState extends State<TemperatureChart> {
                     ),
                     gridData: FlGridData(
                       show: true,
-                      drawVerticalLine: false,
+                      drawVerticalLine: true,
+                      verticalInterval: interval,
                       horizontalInterval: 20,
                       getDrawingHorizontalLine: (value) {
                         return FlLine(
                           color: Colors.grey[200],
                           strokeWidth: 1,
+                        );
+                      },
+                      getDrawingVerticalLine: (value) {
+                        return FlLine(
+                          color: Colors.grey[200],
+                          strokeWidth: 1,
+                          dashArray: [5, 5],
                         );
                       },
                     ),
@@ -811,7 +910,7 @@ class _TemperatureChartState extends State<TemperatureChart> {
           ),
           // Summary Button
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
             child: ElevatedButton(
               onPressed: () {
                 final tempAverages =
@@ -827,11 +926,9 @@ class _TemperatureChartState extends State<TemperatureChart> {
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(8),
                 ),
-                elevation: 2,
-                shadowColor: Colors.blueAccent.withOpacity(0.3),
               ),
               child: const Text(
-                'Summary',
+                'View Summary',
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
               ),
             ),

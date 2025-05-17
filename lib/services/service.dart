@@ -1,3 +1,4 @@
+// service_v2.dart
 import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -8,7 +9,8 @@ import 'package:smart_lighting/screens/dashboard/dashboard_screen.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:uuid/uuid.dart'; // Add this dependency for generating unique tokens
+import 'package:uuid/uuid.dart';
+import 'package:fl_chart/fl_chart.dart';
 
 class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
@@ -27,7 +29,7 @@ class AuthService {
   }) async {
     try {
       UserCredential userCredential =
-      await _auth.createUserWithEmailAndPassword(
+          await _auth.createUserWithEmailAndPassword(
         email: email,
         password: password,
       );
@@ -51,10 +53,12 @@ class AuthService {
         // Send email verification based on role
         if (role == "Admin") {
           await user.sendEmailVerification();
-          print("Admin request for ${email}. Please forward the verification link to owners: ${_ownerEmails.join(', ')}");
+          print(
+              "Admin request for ${email}. Please forward the verification link to owners: ${_ownerEmails.join(', ')}");
           print("Verification link contains token: $verificationToken");
           Fluttertoast.showToast(
-            msg: "Admin request sent. Please forward the verification link to owners for approval.",
+            msg:
+                "Admin request sent. Please forward the verification link to owners for approval.",
             toastLength: Toast.LENGTH_LONG,
             gravity: ToastGravity.SNACKBAR,
             backgroundColor: Colors.black54,
@@ -131,16 +135,16 @@ class AuthService {
       }
 
       DocumentSnapshot userDoc =
-      await _firestore.collection('users').doc(user.uid).get();
+          await _firestore.collection('users').doc(user.uid).get();
 
       if (!userDoc.exists) {
         throw "User data not found in Firestore.";
       }
 
       String role = userDoc.get('role') ?? 'Student';
-      bool isAdminApproved = role == "Admin" ? await isAdminApproved(user.uid) : true;
+      bool adminApproved = role == "Admin" ? await isAdminApproved(user.uid) : true;
 
-      if (role == "Admin" && !isAdminApproved) {
+      if (role == "Admin" && !adminApproved) {
         throw "Admin account not yet approved.";
       }
 
@@ -223,7 +227,7 @@ class AuthService {
     await user.reload();
 
     DocumentSnapshot userDoc =
-    await _firestore.collection('users').doc(user.uid).get();
+        await _firestore.collection('users').doc(user.uid).get();
 
     if (!userDoc.exists) {
       Fluttertoast.showToast(
@@ -238,9 +242,9 @@ class AuthService {
     }
 
     String role = userDoc.get('role') ?? 'Student';
-    bool isAdminApproved = role == "Admin" ? await isAdminApproved(user.uid) : true;
+    bool adminApproved = role == "Admin" ? await isAdminApproved(user.uid) : true;
 
-    if (user.emailVerified && isAdminApproved) {
+    if (user.emailVerified && adminApproved) {
       await _firestore.collection('users').doc(user.uid).update({
         'isVerified': true,
       });
@@ -266,7 +270,7 @@ class AuthService {
       }
     } else {
       Fluttertoast.showToast(
-        msg: role == "Admin" && !isAdminApproved
+        msg: role == "Admin" && !adminApproved
             ? "Wait for the admin to accept your verification request."
             : "Email is not verified. Please check your email.",
         toastLength: Toast.LENGTH_LONG,
@@ -327,7 +331,7 @@ class AuthService {
       Navigator.pushAndRemoveUntil(
         context,
         MaterialPageRoute(builder: (context) => const Login()),
-            (route) => false,
+        (route) => false,
       );
     }
   }
@@ -389,7 +393,7 @@ class AuthService {
           break;
         default:
           message =
-          'Failed to send verification email: ${e.message} (code: ${e.code})';
+              'Failed to send verification email: ${e.message} (code: ${e.code})';
       }
       print('Update email error: $message');
       throw Exception(message);
@@ -468,7 +472,6 @@ class AuthService {
   }
 }
 
-// ESP32Service remains unchanged as per your instructions
 class ESP32Service extends ChangeNotifier {
   static final ESP32Service _instance = ESP32Service._internal();
   factory ESP32Service() => _instance;
@@ -504,6 +507,16 @@ class ESP32Service extends ChangeNotifier {
   bool _coolerEnabled = true;
   bool _sensorBasedLightControl = true;
 
+  int _elapsedSeconds = 0;
+  Timer? _elapsedTimer;
+
+  // Chart data management
+  List<FlSpot> _tempData = [];
+  List<FlSpot> _humidityData = [];
+  bool _isCollectingData = false;
+  Timer? _dataCollectionTimer;
+  static const int _maxDataPoints = 3600; // Store up to 1 hour of data
+
   bool get pirSensorActive => _pirSensorActive;
   List<String> get pirStatuses => _pirStatuses;
   double get temperature => _temperature;
@@ -522,6 +535,11 @@ class ESP32Service extends ChangeNotifier {
   int get lightIntensity => _lightIntensity;
   bool get coolerEnabled => _coolerEnabled;
   bool get sensorBasedLightControl => _sensorBasedLightControl;
+  int get elapsedSeconds => _elapsedSeconds;
+
+  List<FlSpot> get tempData => _tempData;
+  List<FlSpot> get humidityData => _humidityData;
+  bool get isCollectingData => _isCollectingData;
 
   set pirSensorActive(bool value) {
     _pirSensorActive = value;
@@ -601,12 +619,10 @@ class ESP32Service extends ChangeNotifier {
   }
 
   set pirEnabled(bool value) {
-    if (_isAutoMode) {
-      Fluttertoast.showToast(msg: "PIR sensor is disabled in Auto mode");
-      return;
+    if (!_isManualOverride) {
+      _pirEnabled = value;
+      _notifyWithDebounce();
     }
-    _pirEnabled = value;
-    _notifyWithDebounce();
   }
 
   set lightIntensity(int value) {
@@ -626,9 +642,8 @@ class ESP32Service extends ChangeNotifier {
 
   void _notifyWithDebounce() {
     _debounceTimer?.cancel();
-    _debounceTimer = Timer(const Duration(milliseconds: 100), () {
-      notifyListeners();
-    });
+    // Removed delay for real-time updates
+    notifyListeners();
   }
 
   Future<void> init() async {
@@ -894,9 +909,8 @@ class ESP32Service extends ChangeNotifier {
     }
 
     // Enforce PIR disabled in auto mode
-    bool effectivePirEnabled = isAutoMode ? false : pirEnabled;
-    if (isAutoMode && pirEnabled) {
-      Fluttertoast.showToast(msg: "PIR is disabled in Auto mode");
+    if (!isManualOverride) {
+      _pirEnabled = false;
     }
 
     try {
@@ -905,7 +919,7 @@ class ESP32Service extends ChangeNotifier {
         body: {
           'tempThreshold': tempThreshold.toString(),
           'humidThreshold': humidThreshold.toString(),
-          'pirEnabled': effectivePirEnabled.toString(),
+          'pirEnabled': pirEnabled.toString(),
           'lightIntensity': lightIntensity.toString(),
           'isAutoMode': isAutoMode.toString(),
           'coolerEnabled': coolerEnabled.toString(),
@@ -916,7 +930,7 @@ class ESP32Service extends ChangeNotifier {
       if (response.statusCode == 200) {
         this.tempThreshold = tempThreshold;
         this.humidThreshold = humidThreshold;
-        this.pirEnabled = effectivePirEnabled;
+        this.pirEnabled = pirEnabled;
         this.lightIntensity = lightIntensity;
         this.isAutoMode = isAutoMode;
         this.coolerEnabled = coolerEnabled;
@@ -942,10 +956,96 @@ class ESP32Service extends ChangeNotifier {
     } catch (e) {}
   }
 
+  void startElapsedTimer() {
+    _elapsedTimer?.cancel();
+    _elapsedSeconds = 0;
+    _elapsedTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      _elapsedSeconds++;
+      notifyListeners();
+    });
+  }
+
+  void stopElapsedTimer() {
+    _elapsedTimer?.cancel();
+    _elapsedTimer = null;
+  }
+
+  void resetElapsedTimer() {
+    _elapsedSeconds = 0;
+    notifyListeners();
+  }
+
+  void startDataCollection() {
+    if (_isCollectingData) return; // Prevent multiple starts
+
+    _tempData = [];
+    _humidityData = [];
+    _isCollectingData = true;
+    startElapsedTimer();
+
+    // Collect data every second
+    _dataCollectionTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!isConnected || !isSensorsOn) {
+        return;
+      }
+
+      if (elapsedSeconds >= 3600) { // Stop after 1 hour
+        _isCollectingData = false;
+        timer.cancel();
+        stopElapsedTimer();
+        notifyListeners();
+        return;
+      }
+
+      // Create new lists to trigger widget rebuilds
+      List<FlSpot> newTempData = List.from(_tempData);
+      List<FlSpot> newHumidityData = List.from(_humidityData);
+
+      // Update temperature data
+      if (temperature > 0 && temperature.isFinite) {
+        newTempData.add(FlSpot(elapsedSeconds.toDouble(), temperature));
+        if (newTempData.length > _maxDataPoints) {
+          newTempData.removeAt(0);
+        }
+      }
+
+      // Update humidity data
+      if (humidity > 0 && humidity.isFinite) {
+        newHumidityData.add(FlSpot(elapsedSeconds.toDouble(), humidity));
+        if (newHumidityData.length > _maxDataPoints) {
+          newHumidityData.removeAt(0);
+        }
+      }
+
+      // Update instance variables with new lists
+      _tempData = newTempData;
+      _humidityData = newHumidityData;
+      notifyListeners();
+    });
+  }
+
+  void stopDataCollection() {
+    _dataCollectionTimer?.cancel();
+    _dataCollectionTimer = null;
+    _isCollectingData = false;
+    stopElapsedTimer();
+    notifyListeners();
+  }
+
+  void resetDataCollection() {
+    stopDataCollection();
+    resetElapsedTimer();
+    startDataCollection();
+  }
+
+  @override
   void dispose() {
     _pollingTimer?.cancel();
     _reconnectTimer?.cancel();
     _debounceTimer?.cancel();
+    _elapsedTimer?.cancel();
+    _dataCollectionTimer?.cancel();
     _isPolling = false;
+    super.dispose();
   }
 }
