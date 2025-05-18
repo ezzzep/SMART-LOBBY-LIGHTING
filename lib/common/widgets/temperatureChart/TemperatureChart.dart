@@ -1,4 +1,4 @@
-// temperaturechart_v2.dart
+// temperaturechart_v7.dart
 import 'dart:async';
 import 'dart:io';
 import 'dart:math';
@@ -139,13 +139,13 @@ class _TemperatureChartState extends State<TemperatureChart>
     };
 
     for (var spot in data) {
-      if (spot.x >= 0 && spot.x <= 15) {
+      if (spot.x >= 0 && spot.x <= 15 * 60) {
         buckets['0–15']!.add(spot.y);
-      } else if (spot.x > 15 && spot.x <= 30) {
+      } else if (spot.x > 15 * 60 && spot.x <= 30 * 60) {
         buckets['16–30']!.add(spot.y);
-      } else if (spot.x > 30 && spot.x <= 45) {
+      } else if (spot.x > 30 * 60 && spot.x <= 45 * 60) {
         buckets['31–45']!.add(spot.y);
-      } else if (spot.x > 45 && spot.x <= 60) {
+      } else if (spot.x > 45 * 60 && spot.x <= 60 * 60) {
         buckets['46–60']!.add(spot.y);
       }
     }
@@ -421,7 +421,7 @@ class _TemperatureChartState extends State<TemperatureChart>
   // Download Excel file with temperature and humidity data
   Future<void> _downloadExcel() async {
     final validTempData = _validateAndSortData(currentTempData, 30, 45);
-    final validHumidityData = _validateAndSortData(currentHumidityData, 0, 100);
+    final validHumidityData = _validateAndSortData(currentHumidityData, 30, 80);
 
     if (validTempData.isEmpty || validHumidityData.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -450,7 +450,7 @@ class _TemperatureChartState extends State<TemperatureChart>
         selectedDate.month,
         selectedDate.day,
         0,
-        minute,
+        minute ~/ 60,
       );
       final formattedTimestamp =
           DateFormat('yyyy-MM-dd HH:mm:ss').format(timestamp);
@@ -562,11 +562,31 @@ class _TemperatureChartState extends State<TemperatureChart>
   @override
   Widget build(BuildContext context) {
     final validTempData = _validateAndSortData(currentTempData, 30, 45);
-    final validHumidityData = _validateAndSortData(currentHumidityData, 0, 100);
+    final validHumidityData = _validateAndSortData(currentHumidityData, 30, 80);
 
-    // Calculate time intervals for x-axis
-    final maxX = validTempData.isNotEmpty ? validTempData.last.x : 3600.0;
-    final interval = maxX > 900 ? 300.0 : 60.0; // Show 5-min or 1-min intervals
+    // Debug print for humidity data
+    if (kDebugMode) {
+      print('Humidity Data: ${validHumidityData.length} points');
+      print('Sample Humidity Points: ${validHumidityData.take(5).toList()}');
+    }
+
+    // Calculate time intervals for x-axis (max 60 minutes)
+    final maxX = 3600.0; // 60 minutes in seconds
+    const interval = 15 * 60.0; // 15-minute intervals in seconds
+
+    // Filter spots for highlighted dots at 0, 15, 30, 45, 60 minutes
+    List<FlSpot> getHighlightedSpots(List<FlSpot> data, bool isHumidity) {
+      const highlightTimes = [0.0, 15 * 60, 30 * 60, 45 * 60, 60 * 60];
+      List<FlSpot> highlighted = [];
+      for (var time in highlightTimes) {
+        var closestSpot = data.firstWhere(
+          (spot) => (spot.x - time).abs() < 1.0,
+          orElse: () => FlSpot(time.toDouble(), data.isNotEmpty ? data.last.y.toDouble() : 30.0),
+        );
+        highlighted.add(closestSpot);
+      }
+      return highlighted;
+    }
 
     return SingleChildScrollView(
       child: Column(
@@ -637,18 +657,23 @@ class _TemperatureChartState extends State<TemperatureChart>
                             ? validTempData
                             : [FlSpot(0, 30), FlSpot(maxX, 30)],
                         isCurved: true,
-                        curveSmoothness: 0.35,
+                        curveSmoothness: 0.5, // Increased for smoother curve
                         gradient: const LinearGradient(
                           colors: [Colors.redAccent, Colors.orangeAccent],
                         ),
-                        barWidth: 3,
+                        barWidth: 4, // Increased for thicker, smoother line
                         dotData: FlDotData(
                           show: true,
+                          checkToShowDot: (spot, barData) {
+                            // Highlight only at 0, 15, 30, 45, 60 minutes
+                            return [0, 15 * 60, 30 * 60, 45 * 60, 60 * 60]
+                                .any((time) => (spot.x - time).abs() < 1.0);
+                          },
                           getDotPainter: (spot, percent, barData, index) {
                             return FlDotCirclePainter(
-                              radius: 3,
+                              radius: 4,
                               color: Colors.redAccent,
-                              strokeWidth: 1,
+                              strokeWidth: 2,
                               strokeColor: Colors.white,
                             );
                           },
@@ -714,13 +739,16 @@ class _TemperatureChartState extends State<TemperatureChart>
                           interval: interval,
                           getTitlesWidget: (value, meta) {
                             final minutes = (value / 60).floor();
-                            return Text(
-                              '${minutes}m',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: Colors.grey[600],
-                              ),
-                            );
+                            if ([0, 15, 30, 45, 60].contains(minutes)) {
+                              return Text(
+                                '$minutes min',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey[600],
+                                ),
+                              );
+                            }
+                            return const SizedBox.shrink();
                           },
                         ),
                       ),
@@ -781,26 +809,31 @@ class _TemperatureChartState extends State<TemperatureChart>
                   LineChartData(
                     minX: 0,
                     maxX: maxX,
-                    minY: 0,
-                    maxY: 100,
+                    minY: 30,
+                    maxY: 80,
                     lineBarsData: [
                       LineChartBarData(
                         spots: validHumidityData.isNotEmpty
                             ? validHumidityData
-                            : [FlSpot(0, 0), FlSpot(maxX, 0)],
+                            : [FlSpot(0, 30), FlSpot(maxX, 30)],
                         isCurved: true,
-                        curveSmoothness: 0.35,
+                        curveSmoothness: 0.5, // Increased for smoother curve
                         gradient: const LinearGradient(
                           colors: [Colors.blueAccent, Colors.cyanAccent],
                         ),
-                        barWidth: 3,
+                        barWidth: 4, // Increased for thicker, smoother line
                         dotData: FlDotData(
                           show: true,
+                          checkToShowDot: (spot, barData) {
+                            // Highlight only at 0, 15, 30, 45, 60 minutes
+                            return [0, 15 * 60, 30 * 60, 45 * 60, 60 * 60]
+                                .any((time) => (spot.x - time).abs() < 1.0);
+                          },
                           getDotPainter: (spot, percent, barData, index) {
                             return FlDotCirclePainter(
-                              radius: 3,
+                              radius: 4,
                               color: Colors.blueAccent,
-                              strokeWidth: 1,
+                              strokeWidth: 2,
                               strokeColor: Colors.white,
                             );
                           },
@@ -837,10 +870,10 @@ class _TemperatureChartState extends State<TemperatureChart>
                       leftTitles: AxisTitles(
                         sideTitles: SideTitles(
                           showTitles: true,
-                          interval: 20,
+                          interval: 10,
                           reservedSize: 40,
                           getTitlesWidget: (value, meta) {
-                            if ([0, 20, 40, 60, 80, 100]
+                            if ([30, 40, 50, 60, 70, 80]
                                 .contains(value.toInt())) {
                               return Text(
                                 '${value.toStringAsFixed(0)}%',
@@ -866,13 +899,16 @@ class _TemperatureChartState extends State<TemperatureChart>
                           interval: interval,
                           getTitlesWidget: (value, meta) {
                             final minutes = (value / 60).floor();
-                            return Text(
-                              '${minutes}m',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: Colors.grey[600],
-                              ),
-                            );
+                            if ([0, 15, 30, 45, 60].contains(minutes)) {
+                              return Text(
+                                '$minutes min',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey[600],
+                                ),
+                              );
+                            }
+                            return const SizedBox.shrink();
                           },
                         ),
                       ),
@@ -888,7 +924,7 @@ class _TemperatureChartState extends State<TemperatureChart>
                       show: true,
                       drawVerticalLine: true,
                       verticalInterval: interval,
-                      horizontalInterval: 20,
+                      horizontalInterval: 10,
                       getDrawingHorizontalLine: (value) {
                         return FlLine(
                           color: Colors.grey[200],

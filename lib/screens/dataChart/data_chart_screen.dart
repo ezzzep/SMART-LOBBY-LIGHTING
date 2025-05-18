@@ -87,9 +87,7 @@ class _DataChartScreenState extends State<DataChartScreen> {
               esp32Service.tempData.isNotEmpty &&
               esp32Service.humidityData.isNotEmpty) {
             WidgetsBinding.instance.addPostFrameCallback((_) {
-              _showToast(
-                'Temp: ${esp32Service.tempData.last.y.toStringAsFixed(1)}°C | Humidity: ${esp32Service.humidityData.last.y.toStringAsFixed(1)}%',
-              );
+             
             });
           }
 
