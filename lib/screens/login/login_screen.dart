@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:smart_lighting/screens/ForgotPasswordScreen/forgot_password_screen.dart';
-import 'package:smart_lighting/screens/signup/signup_screen.dart';
+import 'package:smart_lighting/screens/signup/UserRole/user_role_screen.dart';
 import 'package:smart_lighting/services/service.dart';
 
 class Login extends StatefulWidget {
@@ -357,7 +357,7 @@ class _LoginState extends State<Login> {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (context) => const Signup(),
+                      builder: (context) => const UserRoleScreen(),
                     ),
                   );
                 },

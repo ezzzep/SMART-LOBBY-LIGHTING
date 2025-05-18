@@ -30,20 +30,13 @@ class _SetupScreenState extends State<SetupScreen> {
   bool _isLoadingWiFi = false;
   String? _configuredSsid;
   bool _isWiFiConnected = false;
-  String? _role;
 
   @override
   void initState() {
     super.initState();
     _checkConnectionStatus();
     _loadWiFiNetworks();
-    _fetchUserRole();
     print('SetupScreen initialized');
-  }
-
-  Future<void> _fetchUserRole() async {
-    _role = await _authService.getUserRole();
-    setState(() {});
   }
 
   @override
@@ -203,13 +196,14 @@ class _SetupScreenState extends State<SetupScreen> {
               _espIpController.text = data['ip'];
             }
           });
+
         } else {
           throw Exception('WiFi setup failed: ${data['error'] ?? 'Unknown error'}');
         }
       } else {
         throw Exception('HTTP error: ${response.statusCode} - ${response.body}');
       }
-    } finally {
+    }  finally {
       if (mounted) {
         setState(() => _isConnecting = false);
       }
@@ -245,25 +239,16 @@ class _SetupScreenState extends State<SetupScreen> {
           backgroundColor: Colors.green,
           textColor: Colors.white,
         );
-        // Redirect based on role
+        // Pop the modal and navigate to Home
         if (mounted) {
-          Navigator.pop(context); // Close the IP modal
-          if (_role == "Student") {
-            Navigator.pushAndRemoveUntil(
-              context,
-              MaterialPageRoute(builder: (context) => const Home()),
-                  (route) => false,
-            );
-          } else {
-            // For Admins, stay on SetupScreen for further configuration
-            Navigator.pushAndRemoveUntil(
-              context,
-              MaterialPageRoute(builder: (context) => const SetupScreen()),
-                  (route) => false,
-            );
-          }
+          Navigator.pop(context);
+          Navigator.pushAndRemoveUntil(
+            context,
+            MaterialPageRoute(builder: (context) => const Home()),
+                (route) => false,
+          );
         }
-        print('Connection successful, IP saved: $ip, navigated based on role: $_role');
+        print('Connection successful, IP saved: $ip, navigated to Home');
       } else {
         throw Exception('Failed to connect: ${response.statusCode}');
       }
@@ -612,6 +597,7 @@ class _SetupScreenState extends State<SetupScreen> {
           );
           print('Disconnected, reset to wifiConfig');
         } catch (e) {
+
           print('Disconnect error: $e');
         } finally {
           if (mounted) {
