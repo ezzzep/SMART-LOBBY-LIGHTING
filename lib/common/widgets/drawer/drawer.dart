@@ -9,10 +9,56 @@ import 'package:smart_lighting/screens/survey/survey_screen.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:smart_lighting/screens/dataChart/data_chart_screen.dart';
 
-class DrawerWidget extends StatelessWidget {
+class DrawerWidget extends StatefulWidget {
   final AuthService authService;
 
   const DrawerWidget({super.key, required this.authService});
+
+  @override
+  State<DrawerWidget> createState() => _DrawerWidgetState();
+}
+
+class _DrawerWidgetState extends State<DrawerWidget> {
+  Map<String, String>? _cachedUserInfo;
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserInfo();
+  }
+
+  Future<void> _loadUserInfo() async {
+    if (_cachedUserInfo == null) {
+      setState(() => _isLoading = true);
+      final userInfo = await _getUserInfo();
+      setState(() {
+        _cachedUserInfo = userInfo;
+        _isLoading = false;
+      });
+    }
+  }
+
+  Future<Map<String, String>> _getUserInfo() async {
+    final user = widget.authService.currentUser;
+    if (user != null) {
+      DocumentSnapshot userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .get();
+
+      String role = userDoc.exists
+          ? (userDoc.get('role')?.toString().capitalize() ?? 'Student')
+          : 'Student';
+
+      String userInfo = user.displayName?.isNotEmpty == true
+          ? user.displayName!
+          : user.email ?? 'Unknown User';
+
+      return {'userInfo': userInfo, 'role': role};
+    }
+    return {'userInfo': 'Unknown User', 'role': 'Unknown'};
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -30,140 +76,73 @@ class DrawerWidget extends StatelessWidget {
         ],
       ),
       child: Drawer(
-        child: FutureBuilder(
-          future: _getUserInfo(),
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(child: CircularProgressIndicator());
-            }
-            String role = snapshot.hasData
-                ? (snapshot.data as Map<String, String>)['role'] ?? 'Student'
-                : 'Student';
-            bool isAdmin = role.toLowerCase() == 'admin';
-
-            return ListView(
-              padding: EdgeInsets.zero,
-              children: [
-                DrawerHeader(
-                  decoration: const BoxDecoration(
-                      color: Color.fromRGBO(83, 166, 234, 1)),
-                  child: snapshot.hasError || !snapshot.hasData
-                      ? const Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Welcome',
-                              style:
-                                  TextStyle(color: Colors.white, fontSize: 14),
-                            ),
-                            SizedBox(height: 5),
-                            Text(
-                              'Unknown User',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                              ),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            SizedBox(height: 5),
-                            Text(
-                              'Role: Unknown',
-                              style:
-                                  TextStyle(color: Colors.white, fontSize: 14),
-                            ),
-                          ],
-                        )
-                      : Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'Welcome',
-                              style:
-                                  TextStyle(color: Colors.white, fontSize: 14),
-                            ),
-                            const SizedBox(height: 5),
-                            Text(
-                              (snapshot.data
-                                      as Map<String, String>)['userInfo'] ??
-                                  'Unknown User',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                              ),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            const SizedBox(height: 5),
-                            Text(
-                              'Role: $role',
-                              style: const TextStyle(
-                                  color: Colors.white, fontSize: 14),
-                            ),
-                          ],
+        child: _isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : ListView(
+                padding: EdgeInsets.zero,
+                children: [
+                  DrawerHeader(
+                    decoration: const BoxDecoration(
+                        color: Color.fromRGBO(83, 166, 234, 1)),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Welcome',
+                          style: TextStyle(color: Colors.white, fontSize: 14),
                         ),
-                ),
-                _buildDrawerItem(
-                    Icons.home, 'System Status', context, const Home()),
-                _buildDrawerItem(Icons.settings, 'System Tweaks', context,
-                    const SystemTweaks()),
-                _buildDrawerItem(
-                    Icons.wifi, 'Setup', context, const SetupScreen()),
-                _buildDrawerItem(Icons.account_circle, 'Account', context,
-                    const AccountSettings()),
-                _buildDrawerItem(Icons.line_axis, 'Data Charts', context,
-                    const DataChartScreen()),
-                if (isAdmin)
-                  _buildDrawerItem(Icons.qr_code, 'Download our App', context,
-                      const QRScreen()),
-                if (isAdmin)
-                  _buildDrawerItem(
-                      Icons.feedback, 'Survey', context, const SurveyScreen()),
-                const Divider(),
-                ListTile(
-                  leading: const Icon(Icons.logout, color: Colors.red),
-                  title: const Text(
-                    'Sign Out',
-                    style: TextStyle(
-                        fontWeight: FontWeight.bold, color: Colors.red),
+                        const SizedBox(height: 5),
+                        Text(
+                          _cachedUserInfo?['userInfo'] ?? 'Unknown User',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 5),
+                        Text(
+                          'Role: ${_cachedUserInfo?['role'] ?? 'Unknown'}',
+                          style: const TextStyle(
+                              color: Colors.white, fontSize: 14),
+                        ),
+                      ],
+                    ),
                   ),
-                  onTap: () async {
-                    await authService.signout(context: context);
-                  },
-                ),
-              ],
-            );
-          },
-        ),
+                  _buildDrawerItem(
+                      Icons.home, 'System Status', context, const Home()),
+                  _buildDrawerItem(Icons.settings, 'System Tweaks', context,
+                      const SystemTweaks()),
+                  _buildDrawerItem(
+                      Icons.wifi, 'Setup', context, const SetupScreen()),
+                  _buildDrawerItem(Icons.account_circle, 'Account', context,
+                      const AccountSettings()),
+                  _buildDrawerItem(Icons.line_axis, 'Data Charts', context,
+                      const DataChartScreen()),
+                  if (_cachedUserInfo?['role']?.toLowerCase() == 'admin') ...[
+                    _buildDrawerItem(Icons.qr_code, 'Download our App', context,
+                        const QRScreen()),
+                    _buildDrawerItem(
+                        Icons.feedback, 'Survey', context, const SurveyScreen()),
+                  ],
+                  const Divider(),
+                  ListTile(
+                    leading: const Icon(Icons.logout, color: Colors.red),
+                    title: const Text(
+                      'Sign Out',
+                      style: TextStyle(
+                          fontWeight: FontWeight.bold, color: Colors.red),
+                    ),
+                    onTap: () async {
+                      await widget.authService.signout(context: context);
+                    },
+                  ),
+                ],
+              ),
       ),
     );
-  }
-
-  Future<Map<String, String>> _getUserInfo() async {
-    final user = authService.currentUser;
-    if (user != null) {
-      // Fetch user document from Firestore
-      DocumentSnapshot userDoc = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .get();
-
-      // Get role, default to 'Student' if not found
-      String role = userDoc.exists
-          ? (userDoc.get('role')?.toString().capitalize() ?? 'Student')
-          : 'Student';
-
-      // Get display name or email
-      String userInfo = user.displayName?.isNotEmpty == true
-          ? user.displayName!
-          : user.email ?? 'Unknown User';
-
-      // Return map with user info and role
-      return {'userInfo': userInfo, 'role': role};
-    }
-    return {'userInfo': 'Unknown User', 'role': 'Unknown'};
   }
 
   Widget _buildDrawerItem(
@@ -173,7 +152,7 @@ class DrawerWidget extends StatelessWidget {
       title: Text(title),
       onTap: () {
         Navigator.pop(context);
-        Navigator.push(
+        Navigator.pushReplacement(
           context,
           MaterialPageRoute(builder: (context) => screen),
         );
@@ -182,7 +161,6 @@ class DrawerWidget extends StatelessWidget {
   }
 }
 
-// Extension to capitalize the role string
 extension StringExtension on String {
   String capitalize() {
     if (isEmpty) return this;
