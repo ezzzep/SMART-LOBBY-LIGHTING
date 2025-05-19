@@ -43,3 +43,29 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+
+
+# CMake generated files
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+*.cmake
+install_manifest.txt
+
+# Build directories
+build/
+out/
+bin/
+lib/
+
+# Testing
+Testing/
+CTestTestfile.cmake
+DartConfiguration.tcl
+
+# Optional: Ignore IDE or editor files
+.vscode/
+.idea/
+*.swp
