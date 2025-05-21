@@ -1,9 +1,8 @@
-// data_chart_screen_v2.dart
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:smart_lighting/common/widgets/drawer/drawer.dart';
 import 'package:smart_lighting/services/service.dart';
 import 'package:smart_lighting/common/widgets/temperatureChart/TemperatureChart.dart';
-import 'package:provider/provider.dart';
 
 class DataChartScreen extends StatefulWidget {
   const DataChartScreen({super.key});
@@ -12,45 +11,73 @@ class DataChartScreen extends StatefulWidget {
   State<DataChartScreen> createState() => _DataChartScreenState();
 }
 
-class _DataChartScreenState extends State<DataChartScreen> {
+class _DataChartScreenState extends State<DataChartScreen>
+    with WidgetsBindingObserver {
   final AuthService _authService = AuthService();
   bool _isInitialized = false;
-
-  void _showToast(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        duration: const Duration(seconds: 1),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
-  }
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance
+        .addObserver(this); // Add lifecycle observer to handle app resume
+    _initializeService(); // Initialize service on startup
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    if (state == AppLifecycleState.resumed) {
+      _initializeService(); // Reinitialize service when app resumes
+    }
+  }
+
+  void _initializeService() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!_isInitialized) {
-        final esp32Service = Provider.of<ESP32Service>(context, listen: false);
-        if (!esp32Service.isCollectingData) {
-          esp32Service.startDataCollection();
-          _showToast('Starting data collection...');
+      if (!_isInitialized && mounted) {
+        try {
+          final esp32Service =
+              Provider.of<ESP32Service>(context, listen: false);
+          if (!esp32Service.isCollectingData) {
+            esp32Service.startDataCollection();
+            _showToast('Starting data collection...');
+          }
+          setState(() {
+            _isInitialized = true;
+          });
+        } catch (e) {
+          _showToast('Error initializing service: $e');
         }
-        _isInitialized = true;
       }
     });
   }
 
+  void _showToast(String message) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message),
+          duration: const Duration(seconds: 1),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
   @override
   void dispose() {
-    // Keep data collection running across navigation
+    WidgetsBinding.instance.removeObserver(this); // Remove lifecycle observer
     super.dispose();
   }
 
   void _resetChart() {
-    final esp32Service = Provider.of<ESP32Service>(context, listen: false);
-    esp32Service.resetDataCollection();
-    _showToast('Starting new data collection...');
+    try {
+      final esp32Service = Provider.of<ESP32Service>(context, listen: false);
+      esp32Service.resetDataCollection();
+      _showToast('Starting new data collection...');
+    } catch (e) {
+      _showToast('Error resetting chart: $e');
+    }
   }
 
   @override
@@ -67,6 +94,10 @@ class _DataChartScreenState extends State<DataChartScreen> {
         actions: [
           Consumer<ESP32Service>(
             builder: (context, esp32Service, child) {
+              if (esp32Service == null || !_isInitialized) {
+                return const SizedBox
+                    .shrink(); // Avoid rendering until initialized
+              }
               if (!esp32Service.isCollectingData) {
                 return IconButton(
                   icon: const Icon(Icons.refresh),
@@ -82,12 +113,19 @@ class _DataChartScreenState extends State<DataChartScreen> {
       drawer: DrawerWidget(authService: _authService),
       body: Consumer<ESP32Service>(
         builder: (context, esp32Service, child) {
+          // Show loading indicator if service is not initialized or null
+          if (!_isInitialized || esp32Service == null) {
+            return const Center(
+              child: CircularProgressIndicator(),
+            );
+          }
+
           // Show toast for new data
           if (esp32Service.isCollectingData &&
               esp32Service.tempData.isNotEmpty &&
               esp32Service.humidityData.isNotEmpty) {
             WidgetsBinding.instance.addPostFrameCallback((_) {
-             
+              // Add toast logic if needed (e.g., notify new data point)
             });
           }
 
