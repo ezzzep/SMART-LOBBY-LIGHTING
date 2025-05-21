@@ -59,7 +59,8 @@ dependencies:
   excel: ^4.0.6
   path_provider: ^2.1.5
   uuid: ^4.5.1
-
+  cloud_functions: ^5.5.0
+  emailjs: ^4.0.0
 
 dev_dependencies:
   flutter_test:

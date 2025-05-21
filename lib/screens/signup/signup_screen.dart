@@ -1,24 +1,29 @@
+import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart';
 import 'package:smart_lighting/screens/login/login_screen.dart';
 import 'package:smart_lighting/services/service.dart';
-import 'package:flutter/gestures.dart';
-import 'package:flutter/material.dart';
+import 'package:fluttertoast/fluttertoast.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:smart_lighting/screens/verification/verify_email_screen.dart';
 
-class Signup extends StatefulWidget {
-  const Signup({super.key});
+class SignupScreen extends StatefulWidget {
+  final String selectedRole;
+
+  const SignupScreen({super.key, required this.selectedRole});
 
   @override
-  State<Signup> createState() => _SignupState();
+  State<SignupScreen> createState() => _SignupState();
 }
 
-class _SignupState extends State<Signup> {
+class _SignupState extends State<SignupScreen> {
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   bool _isLoading = false;
   bool _obscurePassword = true;
   String? _emailError;
   String? _passwordError;
-  String? _role;
   final AuthService _authService = AuthService();
 
   @override
@@ -64,24 +69,91 @@ class _SignupState extends State<Signup> {
   }
 
   Future<void> _handleSignup() async {
-    if (_emailError != null || _passwordError != null || _role == null) return;
+    if (_emailError != null || _passwordError != null) return;
 
     setState(() => _isLoading = true);
 
     try {
+      // Perform signup via AuthService
       await _authService.signup(
         email: _emailController.text.trim(),
         password: _passwordController.text.trim(),
-        role: _role!, // Send the selected role to the backend
+        role: widget.selectedRole,
         context: context,
       );
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Signup failed: $e")),
-      );
-    }
 
-    setState(() => _isLoading = false);
+      // Get the current user
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null && widget.selectedRole == 'Admin' && mounted) {
+        // Check if a pending admin request already exists
+        final docRef = FirebaseFirestore.instance
+            .collection('pending_admins')
+            .doc(user.uid);
+        final doc = await docRef.get();
+        if (!doc.exists) {
+          // Create a pending admin request
+          await docRef.set({
+            'email': user.email,
+            'uid': user.uid,
+            'requestedAt': FieldValue.serverTimestamp(),
+          });
+          // Show feedback to the user
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Admin request submitted. Awaiting approval.'),
+              backgroundColor: Colors.blue,
+              duration: Duration(seconds: 3),
+            ),
+          );
+        } else {
+          // Optional: Notify user if request already exists
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Admin request already submitted.'),
+              backgroundColor: Colors.orange,
+              duration: Duration(seconds: 3),
+            ),
+          );
+        }
+      } else if (mounted) {
+        // Show success for non-admin roles
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content:
+                Text('${widget.selectedRole} account created successfully.'),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+
+      // Navigate to VerifyEmailScreen after signup, passing the email
+      if (mounted) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) => VerifyEmailScreen(
+              email: _emailController.text.trim(),
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        Fluttertoast.showToast(
+          msg: "Signup failed: $e",
+          toastLength: Toast.LENGTH_LONG,
+          gravity: ToastGravity.SNACKBAR,
+          backgroundColor: Colors.red,
+          textColor: Colors.white,
+          fontSize: 14.0,
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
   }
 
   @override
@@ -101,7 +173,7 @@ class _SignupState extends State<Signup> {
             children: [
               Center(
                 child: Text(
-                  'Register Account',
+                  'Register as ${widget.selectedRole}',
                   style: GoogleFonts.raleway(
                     textStyle: const TextStyle(
                       color: Colors.black,
@@ -115,11 +187,8 @@ class _SignupState extends State<Signup> {
               _emailAddress(),
               const SizedBox(height: 20),
               _password(),
-              const SizedBox(height: 20),
-              _roleDropdown(),
               const SizedBox(height: 50),
               _signupButton(),
-              // Place the sign-in link below the signup button with 10 padding
               Padding(
                 padding: const EdgeInsets.only(top: 10),
                 child: _signin(context),
@@ -217,64 +286,6 @@ class _SignupState extends State<Signup> {
     );
   }
 
-  // Dropdown for selecting the role (Student or Admin)
-  Widget _roleDropdown() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Role',
-          style: GoogleFonts.raleway(
-            textStyle: const TextStyle(
-              color: Colors.black,
-              fontSize: 16,
-            ),
-          ),
-        ),
-        const SizedBox(height: 16),
-        Container(
-          decoration: BoxDecoration(
-            color: const Color(0xffF7F7F9),
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: Colors.grey),
-          ),
-          child: DropdownButton<String>(
-            value: _role, // value is null initially
-            hint: Padding(
-              padding: const EdgeInsets.only(
-                  left: 8.0), // Add padding to the hint text
-              child: Text(
-                'Please choose a role', // Placeholder text
-                style: const TextStyle(color: Color(0xff6A6A6A)),
-              ),
-            ),
-            items: <String>['Student', 'Admin']
-                .map<DropdownMenuItem<String>>((String value) {
-              return DropdownMenuItem<String>(
-                value: value,
-                child: Padding(
-                  padding: const EdgeInsets.only(
-                      left: 8.0), // Add padding to the dropdown item
-                  child: Text(
-                    value,
-                    style: const TextStyle(color: Colors.black),
-                  ),
-                ),
-              );
-            }).toList(),
-            onChanged: (String? newValue) {
-              setState(() {
-                _role = newValue; // Update role on selection
-              });
-            },
-            isExpanded: true,
-            underline: Container(), // Remove default underline
-          ),
-        ),
-      ],
-    );
-  }
-
   Widget _signupButton() {
     return ElevatedButton(
       style: ElevatedButton.styleFrom(
@@ -286,7 +297,10 @@ class _SignupState extends State<Signup> {
       onPressed: _isLoading ? null : _handleSignup,
       child: _isLoading
           ? const CircularProgressIndicator(color: Colors.white)
-          : const Text("Sign Up", style: TextStyle(color: Color(0xffF7F7F9))),
+          : const Text(
+              "Sign Up",
+              style: TextStyle(color: Color(0xffF7F7F9)),
+            ),
     );
   }
 
@@ -304,9 +318,10 @@ class _SignupState extends State<Signup> {
             TextSpan(
               text: "Log In",
               style: const TextStyle(
-                  color: Color(0xff1A1D1E),
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold),
+                color: Color(0xff1A1D1E),
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+              ),
               recognizer: TapGestureRecognizer()
                 ..onTap = () {
                   Navigator.pushReplacement(
