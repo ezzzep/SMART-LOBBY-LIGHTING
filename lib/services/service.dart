@@ -662,7 +662,7 @@ class ESP32Service extends ChangeNotifier {
 
   Future<void> _saveESP32IP() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('esp32IP', esp32IP ?? '');
+    await prefs.setString('esp32IP',  ?? '');
   }
 
   Future<void> setESP32IP(String ip) async {

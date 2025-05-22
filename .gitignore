@@ -69,3 +69,14 @@ DartConfiguration.tcl
 .vscode/
 .idea/
 *.swp
+*.txt
+*.json
+*.ninja
+*.bin
+*.cc
+*.h
+*.lock
+*.cc
+*.h
+*.cmake
+*.swift
